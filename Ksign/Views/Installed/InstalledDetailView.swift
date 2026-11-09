@@ -14,6 +14,7 @@ struct InstalledDetailView: View {
 	@Environment(\.dismiss) private var dismiss
 
 	var app: InstalledApp
+	@ObservedObject private var _updates = UpdateChecker.shared
 
 	// MARK: Body
 	var body: some View {
@@ -29,6 +30,33 @@ struct InstalledDetailView: View {
 					)
 				} header: {
 					Text(.localized("Installed App"))
+				}
+
+				if !_updates.updates(for: app).isEmpty {
+					Section {
+						ForEach(_updates.updates(for: app)) { build in
+							VStack(alignment: .leading, spacing: 2) {
+								Text(build.appName)
+									.font(.subheadline.weight(.semibold))
+								Text([
+									build.version,
+									build.uploadDate?.formatted(date: .abbreviated, time: .omitted),
+									build.repoName
+								].compactMap { $0 }.joined(separator: " · "))
+									.font(.caption)
+									.foregroundStyle(.secondary)
+								if let file = build.downloadFileName {
+									Text(file)
+										.font(.caption)
+										.foregroundStyle(.secondary)
+										.lineLimit(1)
+										.truncationMode(.middle)
+								}
+							}
+						}
+					} header: {
+						Text(.localized("Available builds"))
+					}
 				}
 
 				if let provenance = app.provenance {

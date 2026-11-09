@@ -14,6 +14,7 @@ import NimbleViews
 // MARK: - InstalledSectionView
 struct InstalledSectionView: View {
 	@ObservedObject private var _store = InstalledStore.shared
+	@ObservedObject private var _updates = UpdateChecker.shared
 
 	var searchText: String
 	/// The app whose details sheet is shown. The sheet itself lives in LibraryView.
@@ -25,6 +26,36 @@ struct InstalledSectionView: View {
 			$0.name.localizedCaseInsensitiveContains(searchText) ||
 			$0.displayName.localizedCaseInsensitiveContains(searchText) ||
 			$0.installedBundleID.localizedCaseInsensitiveContains(searchText)
+		}
+	}
+
+	// MARK: Check row
+	private var _checkRow: some View {
+		HStack {
+			VStack(alignment: .leading, spacing: 2) {
+				Text(.localized("Check for Updates"))
+					.font(.subheadline)
+				if _updates.isChecking {
+					Text(.localized("Checking…"))
+						.font(.caption)
+						.foregroundStyle(.secondary)
+				} else if let last = _updates.lastChecked {
+					Text(last.formatted(date: .abbreviated, time: .shortened))
+						.font(.caption)
+						.foregroundStyle(.secondary)
+				}
+			}
+			Spacer()
+			if _updates.isChecking {
+				ProgressView()
+			} else {
+				Button {
+					_updates.check()
+				} label: {
+					Image(systemName: "arrow.clockwise")
+				}
+				.buttonStyle(.borderless)
+			}
 		}
 	}
 
@@ -40,7 +71,7 @@ struct InstalledSectionView: View {
 					.foregroundStyle(.secondary)
 			} else {
 				ForEach(_filteredApps) { app in
-					InstalledCellView(app: app)
+					InstalledCellView(app: app, hasUpdate: _updates.hasUpdate(app))
 						.onTapGesture {
 							selectedApp = app
 						}
