@@ -17,6 +17,7 @@ struct LibraryView: View {
 	@State private var _selectedSigningAppPresenting: AnyApp?
 	@State private var _selectedInstallAppPresenting: AnyApp?
 	@State private var _selectedAppDylibsPresenting: AnyApp?
+	@State private var _selectedInstalledApp: InstalledApp?
 	@State private var _isBulkSigningPresenting = false
     @State private var _isBulkInstallingPresenting = false
 	@State private var _isImportingPresenting = false
@@ -93,7 +94,7 @@ struct LibraryView: View {
 							}
 						}
 					} else if _selectedTab == 2 {
-						InstalledSectionView(searchText: _searchText)
+						InstalledSectionView(searchText: _searchText, selectedApp: $_selectedInstalledApp)
 					} else {
 						NBSection(
 							.localized("Signed Apps"),
@@ -177,6 +178,11 @@ struct LibraryView: View {
             .environment(\.editMode, $_isEditMode)
 			.sheet(item: $_selectedInfoAppPresenting) { app in
 				LibraryInfoView(app: app.base)
+			}
+			.sheet(item: $_selectedInstalledApp) { app in
+				InstalledDetailView(app: app)
+					.presentationDetents([.medium, .large])
+					.presentationDragIndicator(.visible)
 			}
 			.sheet(item: $_selectedInstallAppPresenting) { app in
 				InstallPreviewView(app: app.base, isSharing: app.archive)

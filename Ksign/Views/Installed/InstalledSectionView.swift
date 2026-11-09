@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import NukeUI
 import NimbleExtensions
 import NimbleViews
 
@@ -15,10 +16,13 @@ struct InstalledSectionView: View {
 	@ObservedObject private var _store = InstalledStore.shared
 
 	var searchText: String
+	/// The app whose details sheet is shown. The sheet itself lives in LibraryView.
+	@Binding var selectedApp: InstalledApp?
 
 	private var _filteredApps: [InstalledApp] {
 		guard !searchText.isEmpty else { return _store.apps }
 		return _store.apps.filter {
+			$0.name.localizedCaseInsensitiveContains(searchText) ||
 			$0.displayName.localizedCaseInsensitiveContains(searchText) ||
 			$0.installedBundleID.localizedCaseInsensitiveContains(searchText)
 		}
@@ -37,6 +41,9 @@ struct InstalledSectionView: View {
 			} else {
 				ForEach(_filteredApps) { app in
 					InstalledCellView(app: app)
+						.onTapGesture {
+							selectedApp = app
+						}
 						.swipeActions(edge: .trailing, allowsFullSwipe: true) {
 							Button(role: .destructive) {
 								withAnimation {
@@ -55,54 +62,109 @@ struct InstalledSectionView: View {
 // MARK: - InstalledCellView
 struct InstalledCellView: View {
 	var app: InstalledApp
+	/// Shows the yellow "Update" badge instead of the version. Set by the update check.
+	var hasUpdate: Bool = false
 
-	private var _origin: String {
-		app.provenance?.repoName ?? .localized("Manually imported")
-	}
-
-	/// Upload date of the installed build as declared by its repo
-	private var _uploadDate: String? {
-		app.provenance?.uploadDate?.formatted(date: .abbreviated, time: .omitted)
-	}
-
-	/// Name of the build in its repo, only shown when it differs from the installed name
-	private var _repoBuildName: String? {
-		guard let repoName = app.provenance?.appName, repoName != app.name else { return nil }
-		return repoName
-	}
-
-	private var _subtitle: String {
-		var lines: [String] = [app.installedBundleID]
-
-		var origin = [_origin]
-		if app.isFromRepo {
-			origin.append(_uploadDate ?? .localized("Upload date unknown"))
+	/// Second line: repo and upload date of the installed build
+	private var _originLine: String {
+		guard let provenance = app.provenance else {
+			return .localized("Manually imported")
 		}
-		lines.append(origin.joined(separator: " · "))
-
-		if let repoBuildName = _repoBuildName {
-			let label: String = .localized("Repo build")
-			lines.append("\(label): \(repoBuildName)")
-		}
-		return lines.joined(separator: "\n")
+		let repo: String = provenance.repoName ?? .localized("Unknown")
+		let date: String = provenance.uploadDate?.formatted(date: .abbreviated, time: .omitted)
+			?? .localized("Upload date unknown")
+		return "\(repo) · \(date)"
 	}
 
 	// MARK: Body
 	var body: some View {
-		FRIconCellView(
-			title: app.name,
-			subtitle: _subtitle,
-			iconUrl: app.provenance?.iconURL,
-			trailing: _versionLabel
-		)
+		HStack(spacing: 9) {
+			_icon
+
+			VStack(alignment: .leading, spacing: 2) {
+				Text(app.name)
+					.font(.headline)
+				Text(_originLine)
+					.font(.subheadline)
+					.foregroundStyle(.secondary)
+				// A long bundle ID is cut in the middle instead of breaking the row
+				Text(app.installedBundleID)
+					.font(.subheadline)
+					.foregroundStyle(.secondary)
+					.lineLimit(1)
+					.truncationMode(.middle)
+			}
+			.frame(maxWidth: .infinity, alignment: .leading)
+
+			_badge
+		}
+		.contentShape(Rectangle())
 	}
 
-	private var _versionLabel: AnyView? {
-		guard let version = app.version, !version.isEmpty else { return nil }
-		return AnyView(
-			Text(version)
-				.font(.subheadline)
-				.foregroundStyle(.secondary)
-		)
+	// MARK: Icon
+	@ViewBuilder
+	private var _icon: some View {
+		if let iconURL = app.provenance?.iconURL {
+			LazyImage(url: iconURL) { state in
+				if let image = state.image {
+					image.appIconStyle()
+				} else {
+					_standardIcon
+				}
+			}
+		} else {
+			_standardIcon
+		}
+	}
+
+	private var _standardIcon: some View {
+		Image("App_Unknown")
+			.appIconStyle()
+	}
+
+	// MARK: Badge
+	/// Same look as the expiry badge on the Signed tab: green with the version,
+	/// yellow with "Update" when a newer build is available.
+	@ViewBuilder
+	private var _badge: some View {
+		if hasUpdate {
+			_pill(
+				text: .localized("Update"),
+				systemImage: "arrow.up.circle",
+				background: .yellow,
+				foreground: .black
+			)
+		} else if let version = app.version, !version.isEmpty {
+			_pill(
+				text: version,
+				systemImage: nil,
+				background: .green,
+				foreground: .white
+			)
+		}
+	}
+
+	private func _pill(
+		text: String,
+		systemImage: String?,
+		background: Color,
+		foreground: Color
+	) -> some View {
+		HStack(spacing: 4) {
+			if let systemImage {
+				Image(systemName: systemImage)
+					.font(.system(size: 11))
+			}
+			Text(text)
+				.font(.system(size: 12))
+				.fontWeight(.semibold)
+				.lineLimit(1)
+		}
+		.foregroundColor(foreground)
+		.padding(.horizontal, 10)
+		.padding(.vertical, 5)
+		.background(background)
+		.clipShape(Capsule())
+		.padding(.trailing, 4)
 	}
 }
