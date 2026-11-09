@@ -35,7 +35,7 @@ final class InstalledStore: ObservableObject {
 	private let fileURL: URL
 
 	// Protected by `lock`
-	private var _apps: [InstalledApp] = []
+	private var _storedApps: [InstalledApp] = []
 	private var _downloads: [String: SourceProvenance] = [:]
 	private var _appLinks: [String: SourceProvenance] = [:]
 
@@ -46,7 +46,7 @@ final class InstalledStore: ObservableObject {
 			let decoder = JSONDecoder()
 			decoder.dateDecodingStrategy = .iso8601
 			if let snapshot = try? decoder.decode(Snapshot.self, from: data) {
-				_apps = snapshot.apps
+				_storedApps = snapshot.apps
 				_downloads = snapshot.downloads
 				_appLinks = snapshot.appLinks
 				apps = snapshot.apps
@@ -71,7 +71,7 @@ final class InstalledStore: ObservableObject {
 	private func mutate(_ change: () -> Void) {
 		lock.lock()
 		change()
-		let snapshot = Snapshot(apps: _apps, downloads: _downloads, appLinks: _appLinks)
+		let snapshot = Snapshot(apps: _storedApps, downloads: _downloads, appLinks: _appLinks)
 		lock.unlock()
 
 		_persist(snapshot)
@@ -164,14 +164,14 @@ final class InstalledStore: ObservableObject {
 		)
 
 		mutate {
-			_apps.removeAll { $0.installedBundleID == bundleID }
-			_apps.insert(record, at: 0)
+			_storedApps.removeAll { $0.installedBundleID == bundleID }
+			_storedApps.insert(record, at: 0)
 		}
 	}
 
 	func remove(_ id: String) {
 		mutate {
-			_apps.removeAll { $0.id == id }
+			_storedApps.removeAll { $0.id == id }
 		}
 	}
 }
