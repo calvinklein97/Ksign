@@ -60,22 +60,49 @@ struct InstalledCellView: View {
 		app.provenance?.repoName ?? .localized("Manually imported")
 	}
 
+	/// Upload date of the installed build as declared by its repo
+	private var _uploadDate: String? {
+		app.provenance?.uploadDate?.formatted(date: .abbreviated, time: .omitted)
+	}
+
+	/// Name of the build in its repo, only shown when it differs from the installed name
+	private var _repoBuildName: String? {
+		guard let repoName = app.provenance?.appName, repoName != app.name else { return nil }
+		return repoName
+	}
+
 	private var _subtitle: String {
-		var parts: [String] = []
-		if let version = app.version, !version.isEmpty {
-			parts.append(version)
+		var lines: [String] = [app.installedBundleID]
+
+		var origin = [_origin]
+		if app.isFromRepo {
+			origin.append(_uploadDate ?? .localized("Upload date unknown"))
 		}
-		parts.append(_origin)
-		parts.append(app.installDate.formatted(date: .abbreviated, time: .omitted))
-		return parts.joined(separator: " · ")
+		lines.append(origin.joined(separator: " · "))
+
+		if let repoBuildName = _repoBuildName {
+			let label: String = .localized("Repo build")
+			lines.append("\(label): \(repoBuildName)")
+		}
+		return lines.joined(separator: "\n")
 	}
 
 	// MARK: Body
 	var body: some View {
 		FRIconCellView(
-			title: app.displayName,
+			title: app.name,
 			subtitle: _subtitle,
-			iconUrl: app.provenance?.iconURL
+			iconUrl: app.provenance?.iconURL,
+			trailing: _versionLabel
+		)
+	}
+
+	private var _versionLabel: AnyView? {
+		guard let version = app.version, !version.isEmpty else { return nil }
+		return AnyView(
+			Text(version)
+				.font(.subheadline)
+				.foregroundStyle(.secondary)
 		)
 	}
 }

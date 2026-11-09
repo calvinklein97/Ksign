@@ -57,8 +57,10 @@ struct BulkInstallProgressView: View {
                 _isWebviewPresenting = false
             }
             
-            // record the installation for the Installed tab
-            if case .completed(let result) = newStatus, case .success = result {
+            // record the installation for the Installed tab, as soon as the system has the package
+            if case .installing = newStatus {
+                InstalledStore.shared.recordInstall(of: app)
+            } else if case .completed(let result) = newStatus, case .success = result {
                 InstalledStore.shared.recordInstall(of: app)
             }
             
