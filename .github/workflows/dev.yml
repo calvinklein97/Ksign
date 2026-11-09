@@ -1,0 +1,45 @@
+name: Dev Build
+
+# Builds feature branches into a separate "dev" pre-release, so the
+# stable "beta" release (built from main) is never replaced by a test build.
+
+on:
+  push:
+    branches: [ "feature/**" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Dev
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Build
+        run: |
+          make
+
+      - name: Update Dev Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+
+          {
+            echo "## Dev build from \`$BRANCH\`"
+            echo "Commit: \`$COMMIT_MSG\` (${{ github.sha }})"
+          } > dev_notes.md
+
+          gh release delete dev --cleanup-tag -y || true
+
+          gh release create dev "packages/Ksign.ipa" \
+            --title "Dev Build ($BRANCH)" \
+            --notes "$(cat dev_notes.md)" \
+            --prerelease \
+            --target ${{ github.sha }}
