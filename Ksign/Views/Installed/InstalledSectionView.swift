@@ -19,6 +19,8 @@ struct InstalledSectionView: View {
 	var searchText: String
 	/// The app whose details sheet is shown. The sheet itself lives in LibraryView.
 	@Binding var selectedApp: InstalledApp?
+	/// The app whose update comparison sheet is shown (also lives in LibraryView)
+	@Binding var compareApp: InstalledApp?
 
 	private var _filteredApps: [InstalledApp] {
 		guard !searchText.isEmpty else { return _store.apps }
@@ -73,7 +75,7 @@ struct InstalledSectionView: View {
 					.foregroundStyle(.secondary)
 			} else {
 				ForEach(_filteredApps) { app in
-					InstalledCellView(app: app, hasUpdate: _updates.hasUpdate(app))
+					InstalledCellView(app: app, hasUpdate: _updates.hasUpdate(app), onUpdate: { compareApp = app })
 						.onTapGesture {
 							selectedApp = app
 						}
@@ -97,6 +99,8 @@ struct InstalledCellView: View {
 	var app: InstalledApp
 	/// Shows the yellow "Update" badge instead of the version. Set by the update check.
 	var hasUpdate: Bool = false
+	/// Tapping the yellow pill opens the update comparison
+	var onUpdate: (() -> Void)? = nil
 
 	/// Second line: repo and upload date of the installed build
 	private var _originLine: String {
@@ -161,12 +165,17 @@ struct InstalledCellView: View {
 	@ViewBuilder
 	private var _badge: some View {
 		if hasUpdate {
-			_pill(
-				text: .localized("Update"),
-				systemImage: "arrow.up.circle",
-				background: .yellow,
-				foreground: .black
-			)
+			Button {
+				onUpdate?()
+			} label: {
+				_pill(
+					text: .localized("Update"),
+					systemImage: "arrow.up.circle",
+					background: .yellow,
+					foreground: .black
+				)
+			}
+			.buttonStyle(.borderless)
 		} else if let version = app.version, !version.isEmpty {
 			_pill(
 				text: version,

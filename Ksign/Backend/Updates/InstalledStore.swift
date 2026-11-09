@@ -38,6 +38,12 @@ final class InstalledStore: ObservableObject {
 	private var _storedApps: [InstalledApp] = []
 	private var _downloads: [String: SourceProvenance] = [:]
 	private var _appLinks: [String: SourceProvenance] = [:]
+	/// Download IDs started from the update sheet (memory only)
+	private var _pendingUpdateDownloads: Set<String> = []
+
+	/// Posted when a download started from the update sheet has been imported.
+	/// `userInfo["uuid"]` holds the UUID of the new Library app.
+	static let updateDownloadReady = Notification.Name("ksign.updateDownloadReady")
 
 	private init() {
 		self.fileURL = Self.storageURL()
@@ -121,6 +127,38 @@ final class InstalledStore: ObservableObject {
 		mutate {
 			if let provenance = _downloads.removeValue(forKey: downloadID) {
 				_appLinks[appUUID] = provenance
+			}
+		}
+
+		lock.lock()
+		let isUpdate = _pendingUpdateDownloads.remove(downloadID) != nil
+		lock.unlock()
+		if isUpdate {
+			DispatchQueue.main.async {
+				NotificationCenter.default.post(
+					name: InstalledStore.updateDownloadReady,
+					object: nil,
+					userInfo: ["uuid": appUUID]
+				)
+			}
+		}
+	}
+
+	/// Registers a download that was started from the update sheet.
+	func registerUpdateDownload(id: String, provenance: SourceProvenance) {
+		lock.lock()
+		_pendingUpdateDownloads.insert(id)
+		lock.unlock()
+		mutate {
+			_downloads[id] = provenance
+		}
+	}
+
+	/// Hides all builds uploaded on or before `date` for this app.
+	func ignore(_ id: String, upTo date: Date) {
+		mutate {
+			if let index = _storedApps.firstIndex(where: { $0.id == id }) {
+				_storedApps[index].ignoredBuildDate = date
 			}
 		}
 	}

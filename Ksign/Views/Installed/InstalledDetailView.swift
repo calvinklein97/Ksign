@@ -14,6 +14,8 @@ struct InstalledDetailView: View {
 	@Environment(\.dismiss) private var dismiss
 
 	var app: InstalledApp
+	/// Opens the update comparison (the sheet lives in LibraryView)
+	var onCompare: (() -> Void)? = nil
 	@ObservedObject private var _updates = UpdateChecker.shared
 
 	// MARK: Body
@@ -34,6 +36,12 @@ struct InstalledDetailView: View {
 
 				if !_updates.updates(for: app).isEmpty {
 					Section {
+						Button(.localized("Update…")) {
+							dismiss()
+							DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+								onCompare?()
+							}
+						}
 						ForEach(_updates.updates(for: app)) { build in
 							VStack(alignment: .leading, spacing: 2) {
 								Text(build.appName)

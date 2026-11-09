@@ -34,6 +34,19 @@ struct UpdateCandidate: Identifiable, Equatable {
 		guard let last = downloadURL?.lastPathComponent, !last.isEmpty else { return nil }
 		return last.removingPercentEncoding ?? last
 	}
+
+	var provenance: SourceProvenance {
+		SourceProvenance(
+			repoID: repoID,
+			repoName: repoName,
+			appBundleID: appBundleID,
+			appName: appName,
+			version: version,
+			uploadDate: uploadDate,
+			downloadURL: downloadURL,
+			iconURL: iconURL
+		)
+	}
 }
 
 // MARK: - UpdateChecker

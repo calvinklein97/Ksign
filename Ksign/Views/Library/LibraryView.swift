@@ -18,6 +18,7 @@ struct LibraryView: View {
 	@State private var _selectedInstallAppPresenting: AnyApp?
 	@State private var _selectedAppDylibsPresenting: AnyApp?
 	@State private var _selectedInstalledApp: InstalledApp?
+	@State private var _compareInstalledApp: InstalledApp?
 	@State private var _isBulkSigningPresenting = false
     @State private var _isBulkInstallingPresenting = false
 	@State private var _isImportingPresenting = false
@@ -94,7 +95,7 @@ struct LibraryView: View {
 							}
 						}
 					} else if _selectedTab == 2 {
-						InstalledSectionView(searchText: _searchText, selectedApp: $_selectedInstalledApp)
+						InstalledSectionView(searchText: _searchText, selectedApp: $_selectedInstalledApp, compareApp: $_compareInstalledApp)
 					} else {
 						NBSection(
 							.localized("Signed Apps"),
@@ -180,9 +181,19 @@ struct LibraryView: View {
 				LibraryInfoView(app: app.base)
 			}
 			.sheet(item: $_selectedInstalledApp) { app in
-				InstalledDetailView(app: app)
+				InstalledDetailView(app: app, onCompare: { _compareInstalledApp = app })
 					.presentationDetents([.medium, .large])
 					.presentationDragIndicator(.visible)
+			}
+			.sheet(item: $_compareInstalledApp) { app in
+				UpdateCompareView(app: app, onStarted: { _selectedTab = 0 })
+					.presentationDetents([.large])
+					.presentationDragIndicator(.visible)
+			}
+			.onReceive(NotificationCenter.default.publisher(for: InstalledStore.updateDownloadReady)) { note in
+				if let uuid = note.userInfo?["uuid"] as? String {
+					_openSigningForUpdate(uuid: uuid, attempts: 8)
+				}
 			}
 			.sheet(item: $_selectedInstallAppPresenting) { app in
 				InstallPreviewView(app: app.base, isSharing: app.archive)
@@ -274,6 +285,25 @@ extension LibraryView {
     }
 }
 
+
+// MARK: - Extension: update downloads
+extension LibraryView {
+	/// After an update download was imported, opens the signing screen with "sign and install".
+	private func _openSigningForUpdate(uuid: String, attempts: Int) {
+		let request = NSFetchRequest<Imported>(entityName: "Imported")
+		request.predicate = NSPredicate(format: "uuid == %@", uuid)
+		request.fetchLimit = 1
+
+		if let imported = try? Storage.shared.context.fetch(request).first {
+			_selectedTab = 0
+			_selectedSigningAppPresenting = AnyApp(base: imported, signAndInstall: true)
+		} else if attempts > 0 {
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+				_openSigningForUpdate(uuid: uuid, attempts: attempts - 1)
+			}
+		}
+	}
+}
 
 // MARK: - Extension: View (Edit Mode Functions)
 extension LibraryView {
