@@ -31,44 +31,12 @@ struct InstalledSectionView: View {
 		}
 	}
 
-	// MARK: Check row
-	private var _checkRow: some View {
-		HStack {
-			VStack(alignment: .leading, spacing: 2) {
-				Text(.localized("Check for Updates"))
-					.font(.subheadline)
-				if _updates.isChecking {
-					Text(.localized("Checking…"))
-						.font(.caption)
-						.foregroundStyle(.secondary)
-				} else if let last = _updates.lastChecked {
-					Text(last.formatted(date: .abbreviated, time: .shortened))
-						.font(.caption)
-						.foregroundStyle(.secondary)
-				}
-			}
-			Spacer()
-			if _updates.isChecking {
-				ProgressView()
-			} else {
-				Button {
-					_updates.check()
-				} label: {
-					Image(systemName: "arrow.clockwise")
-				}
-				.buttonStyle(.borderless)
-			}
-		}
-	}
-
 	// MARK: Body
 	var body: some View {
 		NBSection(
 			.localized("Installed Apps"),
 			secondary: _filteredApps.count.description
 		) {
-			_checkRow
-
 			if _filteredApps.isEmpty {
 				Text(.localized("Apps you install with Ksign will appear here."))
 					.font(.subheadline)
@@ -89,8 +57,45 @@ struct InstalledSectionView: View {
 							}
 						}
 				}
+
+				_lastCheckedFooter
 			}
 		}
+	}
+
+	// MARK: Footer
+	private var _lastCheckedFooter: some View {
+		Group {
+			if _updates.isChecking {
+				Text(.localized("Checking for updates…"))
+			} else if let last = _updates.lastChecked {
+				Text("\(String.localized("Last checked")): \(last.formatted(date: .abbreviated, time: .shortened))")
+			}
+		}
+		.font(.footnote)
+		.foregroundStyle(.secondary)
+		.frame(maxWidth: .infinity)
+		.listRowSeparator(.hidden)
+	}
+}
+
+// MARK: - UpdateCheckButton
+/// Toolbar button that checks all repos for updates.
+struct UpdateCheckButton: View {
+	@ObservedObject private var _updates = UpdateChecker.shared
+
+	var body: some View {
+		Button {
+			_updates.check()
+		} label: {
+			if _updates.isChecking {
+				ProgressView()
+			} else {
+				Image(systemName: "arrow.triangle.2.circlepath")
+			}
+		}
+		.disabled(_updates.isChecking)
+		.accessibilityLabel(Text(.localized("Check for Updates")))
 	}
 }
 

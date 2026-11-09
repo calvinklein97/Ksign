@@ -139,9 +139,16 @@ struct LibraryView: View {
                 }
             }
 			.toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    EditButton()
-                }
+				if _selectedTab != 2 {
+					ToolbarItem(placement: .topBarLeading) {
+						EditButton()
+					}
+				}
+				if _selectedTab == 2 {
+					ToolbarItem(placement: .topBarTrailing) {
+						UpdateCheckButton()
+					}
+				}
                 if _isEditMode.isEditing && _selectedTab != 2 {
 					ToolbarItemGroup(placement: .topBarTrailing) {
                         if _selectedTab == 0 {
@@ -260,6 +267,9 @@ struct LibraryView: View {
                     _selectedInstallAppPresenting = AnyApp(base: app)
 				}
 			}
+        }
+        .onChange(of: _selectedTab) { tab in
+            if tab == 2 { _isEditMode = .inactive }
         }
         .onChange(of: _isEditMode) { state in
             if !state.isEditing {

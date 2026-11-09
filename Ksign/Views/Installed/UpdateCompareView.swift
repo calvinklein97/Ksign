@@ -81,35 +81,46 @@ struct UpdateCompareView: View {
 			.navigationTitle(.localized("Update"))
 			.navigationBarTitleDisplayMode(.inline)
 			.safeAreaInset(edge: .bottom) {
-				VStack(spacing: 8) {
+				VStack(spacing: 10) {
 					Button {
 						_startUpdate()
 					} label: {
 						Text(.localized("Update"))
 							.font(.headline)
 							.frame(maxWidth: .infinity)
-							.padding(.vertical, 12)
-							.background(Color.accentColor)
-							.foregroundStyle(.white)
-							.clipShape(RoundedRectangle(cornerRadius: 12))
 					}
+					.buttonStyle(.borderedProminent)
+					.buttonBorderShape(.capsule)
+					.controlSize(.large)
 					.disabled(_selected == nil)
-					.opacity(_selected == nil ? 0.4 : 1)
 
-					HStack(spacing: 8) {
-						Button(.localized("Cancel")) {
+					HStack(spacing: 10) {
+						Button {
 							dismiss()
+						} label: {
+							Text(.localized("Cancel"))
+								.frame(maxWidth: .infinity)
 						}
-						.frame(maxWidth: .infinity)
+						.buttonStyle(.bordered)
+						.tint(.secondary)
 
-						Button(.localized("Cancel and Ignore"), role: .destructive) {
+						Button(role: .destructive) {
 							_ignore()
+						} label: {
+							Text(.localized("Cancel and Ignore"))
+								.lineLimit(1)
+								.minimumScaleFactor(0.8)
+								.frame(maxWidth: .infinity)
 						}
-						.frame(maxWidth: .infinity)
+						.buttonStyle(.bordered)
+						.tint(.red)
 					}
-					.font(.subheadline)
+					.buttonBorderShape(.capsule)
+					.controlSize(.large)
 				}
-				.padding()
+				.padding(.horizontal, 20)
+				.padding(.top, 12)
+				.padding(.bottom, 8)
 				.background(.bar)
 			}
 			.onAppear {
