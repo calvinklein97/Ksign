@@ -69,6 +69,11 @@ struct InstallPreviewView: View {
 				_isWebviewPresenting = false
 			}
             
+            // record the installation for the Installed tab
+            if case .completed(let result) = newStatus, case .success = result {
+                InstalledStore.shared.recordInstall(of: app)
+            }
+            
             switch newStatus {
             case .completed, .broken(_):
                 progressTask?.cancel()

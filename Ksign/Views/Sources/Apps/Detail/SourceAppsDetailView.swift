@@ -57,7 +57,7 @@ struct SourceAppsDetailView: View {
 						
 						Spacer()
 						
-						DownloadButtonView(app: app)
+						DownloadButtonView(app: app, source: source)
 					}
 					.lineLimit(2)
 					.frame(maxWidth: .infinity, alignment: .leading)
@@ -87,7 +87,7 @@ struct SourceAppsDetailView: View {
 						)
                         if let versions = app.versions {
                             NavigationLink(
-                                destination: VersionHistoryView(app: app, versions: versions)
+                                destination: VersionHistoryView(app: app, versions: versions, source: source)
                                     .navigationTitle(.localized("Version History"))
                                     .navigationBarTitleDisplayMode(.large)
                             ) {

@@ -299,6 +299,7 @@ extension SourceAppsTableRepresentableView { class Coordinator: NSObject, UITabl
                 image: UIImage(systemName: "square.and.arrow.down.on.square"),
                 children: self._contextActions(for: entry.app, with: { version in
                     if let url = version {
+                        InstalledStore.shared.registerDownload(id: entry.app.currentUniqueId, source: entry.source, app: entry.app, downloadURL: url)
                         _ = DownloadManager.shared.startDownload(
                             from: url,
                             id: entry.app.currentUniqueId

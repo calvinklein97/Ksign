@@ -155,6 +155,9 @@ final class AppFileHandler: NSObject, @unchecked Sendable {
 		) { _ in
 			print("[\(self._uuid)] Added to database")
 		}
+
+		// remember which repo build this download came from (no-op for manual imports)
+		InstalledStore.shared.linkDownload(_download?.id, toApp: _uuid)
 	}
 	
 	private func _directory() async throws -> URL {

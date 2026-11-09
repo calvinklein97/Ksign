@@ -24,7 +24,7 @@ struct LibraryView: View {
 
 	@State private var _alertDownloadString: String = "" // for _isDownloadingPresenting
 	@State private var _searchText = ""
-	@State private var _selectedTab: Int = 0 // 0 for Downloaded, 1 for Signed
+	@State private var _selectedTab: Int = 0 // 0 for Downloaded, 1 for Signed, 2 for Installed
 	
 	// MARK: Edit Mode
     @State private var _isEditMode: EditMode = .inactive
@@ -68,6 +68,7 @@ struct LibraryView: View {
 				Picker("", selection: $_selectedTab) {
 					Text(.localized("Downloaded Apps")).tag(0)
 					Text(.localized("Signed Apps")).tag(1)
+					Text(.localized("Installed Apps")).tag(2)
 				}
 				.pickerStyle(SegmentedPickerStyle())
 				.padding(.horizontal)
@@ -91,6 +92,8 @@ struct LibraryView: View {
 								.compatMatchedTransitionSource(id: app.uuid ?? "", ns: _namespace)
 							}
 						}
+					} else if _selectedTab == 2 {
+						InstalledSectionView(searchText: _searchText)
 					} else {
 						NBSection(
 							.localized("Signed Apps"),
@@ -114,6 +117,7 @@ struct LibraryView: View {
 			.searchable(text: $_searchText, placement: .platform())
             .overlay {
                 if
+                    _selectedTab != 2,
                     _filteredSignedApps.isEmpty,
                     _filteredImportedApps.isEmpty
                 {
@@ -136,7 +140,7 @@ struct LibraryView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     EditButton()
                 }
-                if _isEditMode.isEditing {
+                if _isEditMode.isEditing && _selectedTab != 2 {
 					ToolbarItemGroup(placement: .topBarTrailing) {
                         if _selectedTab == 0 {
                             Button {

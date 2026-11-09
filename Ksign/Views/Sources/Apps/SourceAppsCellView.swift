@@ -37,7 +37,7 @@ struct SourceAppsCellView: View {
                         }
                     }
                 }
-                DownloadButtonView(app: app)
+                DownloadButtonView(app: app, source: source)
             }
             
             if

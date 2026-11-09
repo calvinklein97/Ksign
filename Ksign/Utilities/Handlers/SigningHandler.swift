@@ -163,6 +163,8 @@ final class SigningHandler: NSObject {
                 appIcon: bundle?.iconFileName
             ) { _ in
                 Logger.signing.info("[\(self._uuid)] Added to database")
+                // carry the repo provenance over to the signed copy
+                InstalledStore.shared.copyProvenance(from: self._app.uuid, to: self._uuid)
                 continuation.resume()
             }
 		}

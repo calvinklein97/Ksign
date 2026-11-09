@@ -14,6 +14,7 @@ struct VersionHistoryView: View {
 	
     let app: ASRepository.App
     let versions: [ASRepository.App.Version]
+    var source: ASRepository? = nil
     
     var body: some View {
         ScrollView {
@@ -29,6 +30,7 @@ struct VersionHistoryView: View {
                     .contextMenu {
                         if let downloadURL = version.downloadURL {
                             Button {
+                                InstalledStore.shared.registerDownload(id: app.currentUniqueId, source: source, app: app, downloadURL: downloadURL)
                                 _ = DownloadManager.shared.startDownload(
                                     from: downloadURL,
                                     id: app.currentUniqueId

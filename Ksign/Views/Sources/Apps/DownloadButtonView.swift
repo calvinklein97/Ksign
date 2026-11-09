@@ -12,6 +12,8 @@ import NimbleViews
 
 struct DownloadButtonView: View {
 	let app: ASRepository.App
+	/// Repo the app is listed in, used to remember where an installed app came from
+	var source: ASRepository? = nil
 	@ObservedObject private var downloadManager = DownloadManager.shared
 
 	@State private var downloadProgress: Double = 0
@@ -41,6 +43,7 @@ struct DownloadButtonView: View {
 			} else {
 				Button {
 					if let url = app.currentDownloadUrl {
+						InstalledStore.shared.registerDownload(id: app.currentUniqueId, source: source, app: app, downloadURL: url)
 						_ = downloadManager.startDownload(from: url, id: app.currentUniqueId)
 					}
 				} label: {
