@@ -65,6 +65,8 @@ struct InstalledSectionView: View {
 			.localized("Installed Apps"),
 			secondary: _filteredApps.count.description
 		) {
+			_checkRow
+
 			if _filteredApps.isEmpty {
 				Text(.localized("Apps you install with Ksign will appear here."))
 					.font(.subheadline)
