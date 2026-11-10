@@ -79,6 +79,17 @@ struct LibraryView: View {
 				
 				NBListAdaptable {
 					if _selectedTab == 0 {
+						if !downloadManager.downloads.isEmpty {
+							NBSection(
+								.localized("Downloads in progress"),
+								secondary: downloadManager.downloads.count.description
+							) {
+								ForEach(downloadManager.downloads) { download in
+									AppStoreDownloadItemRow(download: download)
+								}
+							}
+						}
+
 						NBSection(
 							.localized("Downloaded Apps"),
 							secondary: _filteredImportedApps.count.description
@@ -121,6 +132,7 @@ struct LibraryView: View {
             .overlay {
                 if
                     _selectedTab != 2,
+                    downloadManager.downloads.isEmpty,
                     _filteredSignedApps.isEmpty,
                     _filteredImportedApps.isEmpty
                 {
