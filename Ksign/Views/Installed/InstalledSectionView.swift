@@ -56,7 +56,7 @@ struct InstalledSectionView: View {
 			secondary: _filteredApps.count.description
 		) {
 			if _filteredApps.isEmpty {
-				Text(.localized("Apps you install with Ksign will appear here."))
+				Text(.localized("Apps you install with CaliSign will appear here."))
 					.font(.subheadline)
 					.foregroundStyle(.secondary)
 			} else {

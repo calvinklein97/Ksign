@@ -103,7 +103,7 @@ extension SettingsView {
 				UIApplication.open(FileManager.default.archives.toSharedDocumentsURL()!)
 			}
 		} footer: {
-			Text(.localized("All of Ksign files except certificates are contained in the documents directory, here are some quick links to these."))
+			Text(.localized("All of CaliSign files except certificates are contained in the documents directory, here are some quick links to these."))
 		}
 	}
 }

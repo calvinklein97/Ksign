@@ -46,7 +46,7 @@ struct FeatherApp: App {
 	}
 	
 	private func _handleURL(_ url: URL) {
-		if url.scheme == "ksign" {
+		if url.scheme == "calisign" {
 			if let fullPath = url.validatedScheme(after: "/source/") {
 				FR.handleSource(fullPath) { }
 			}
@@ -70,7 +70,7 @@ struct FeatherApp: App {
 			}
 			
             if url.pathExtension == "ksign" {
-                UIAlertController.showAlertWithOk(title: .localized("Error"), message: .localized("Ksign certificate file (.ksign) is now unsupported from v1.5.1, please refer to use .p12 and .mobileprovision instead."))
+                UIAlertController.showAlertWithOk(title: .localized("Error"), message: .localized("CaliSign certificate file (.ksign) is now unsupported from v1.5.1, please refer to use .p12 and .mobileprovision instead."))
             }
 		}
 	}

@@ -40,14 +40,14 @@
 			<key>CFBundleTypeIconFile</key>
 			<string>ksign_extension</string>
 			<key>CFBundleTypeName</key>
-			<string>Ksign Certificate Package</string>
+			<string>CaliSign Certificate Package</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>nya.asami.ksign.cert</string>
+				<string>de.calvinklein.calisign.cert</string>
 			</array>
 		</dict>
 	</array>
@@ -114,10 +114,10 @@
 			<key>CFBundleURLIconFile</key>
 			<string>ksign_extension</string>
 			<key>CFBundleURLName</key>
-			<string>nya.asami.ksign</string>
+			<string>de.calvinklein.calisign</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>ksign</string>
+				<string>calisign</string>
 			</array>
 		</dict>
 	</array>
@@ -200,7 +200,7 @@
 				<string>public.content</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>Ksign Certificate Package</string>
+			<string>CaliSign Certificate Package</string>
 			<key>UTTypeIconFile</key>
 			<string>ksign_extension</string>
 			<key>UTTypeIcons</key>
@@ -209,7 +209,7 @@
 				<string>KSIGN</string>
 			</dict>
 			<key>UTTypeIdentifier</key>
-			<string>nya.asami.ksign.cert</string>
+			<string>de.calvinklein.calisign.cert</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>

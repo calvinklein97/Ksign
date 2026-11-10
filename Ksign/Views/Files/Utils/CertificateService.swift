@@ -110,6 +110,6 @@ final class CertificateService {
 
 extension UTType {
     static var ksign: UTType {
-        UTType(exportedAs: "nya.asami.ksign.cert")
+        UTType(exportedAs: "de.calvinklein.calisign.cert")
     }
 } 
