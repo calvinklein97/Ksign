@@ -58,7 +58,6 @@ enum TabEnum: String, CaseIterable, Hashable {
             .files,
             .library,
             .appstore,
-            .downloader,
 			.settings,
 		]
 	}
