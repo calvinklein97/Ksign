@@ -15,20 +15,38 @@ import NimbleViews
 struct InstalledSectionView: View {
 	@ObservedObject private var _store = InstalledStore.shared
 	@ObservedObject private var _updates = UpdateChecker.shared
+	@Environment(\.editMode) private var _editMode
+	@AppStorage(InstalledSortStorage.keyName) private var _sortKeyRaw: String = InstalledSortKey.installDate.rawValue
+	@AppStorage(InstalledSortStorage.ascendingName) private var _sortAscending: Bool = false
 
 	var searchText: String
 	/// The app whose details sheet is shown. The sheet itself lives in LibraryView.
 	@Binding var selectedApp: InstalledApp?
 	/// The app whose update comparison sheet is shown (also lives in LibraryView)
 	@Binding var compareApp: InstalledApp?
+	/// IDs of the apps selected in edit mode (shared with the other Library tabs)
+	@Binding var selectedIDs: Set<String>
 
 	private var _filteredApps: [InstalledApp] {
-		guard !searchText.isEmpty else { return _store.apps }
-		return _store.apps.filter {
-			$0.name.localizedCaseInsensitiveContains(searchText) ||
-			$0.displayName.localizedCaseInsensitiveContains(searchText) ||
-			$0.installedBundleID.localizedCaseInsensitiveContains(searchText)
+		let list: [InstalledApp]
+		if searchText.isEmpty {
+			list = _store.apps
+		} else {
+			list = _store.apps.filter {
+				$0.name.localizedCaseInsensitiveContains(searchText) ||
+				$0.displayName.localizedCaseInsensitiveContains(searchText) ||
+				$0.installedBundleID.localizedCaseInsensitiveContains(searchText)
+			}
 		}
+		return list.sorted(
+			by: InstalledSortKey(rawValue: _sortKeyRaw) ?? .installDate,
+			ascending: _sortAscending,
+			hasUpdate: { _updates.hasUpdate($0) }
+		)
+	}
+
+	private var _isEditing: Bool {
+		_editMode?.wrappedValue == .active
 	}
 
 	// MARK: Body
@@ -43,11 +61,23 @@ struct InstalledSectionView: View {
 					.foregroundStyle(.secondary)
 			} else {
 				ForEach(_filteredApps) { app in
-					InstalledCellView(app: app, hasUpdate: _updates.hasUpdate(app), onUpdate: { compareApp = app })
-						.onTapGesture {
+					InstalledCellView(
+						app: app,
+						hasUpdate: _updates.hasUpdate(app),
+						onUpdate: { compareApp = app },
+						isEditing: _isEditing,
+						isSelected: selectedIDs.contains(app.id),
+						onToggle: { _toggle(app) }
+					)
+					.onTapGesture {
+						if _isEditing {
+							_toggle(app)
+						} else {
 							selectedApp = app
 						}
-						.swipeActions(edge: .trailing, allowsFullSwipe: true) {
+					}
+					.swipeActions(edge: .trailing, allowsFullSwipe: true) {
+						if !_isEditing {
 							Button(role: .destructive) {
 								withAnimation {
 									_store.remove(app.id)
@@ -56,9 +86,21 @@ struct InstalledSectionView: View {
 								Label(.localized("Delete"), systemImage: "trash")
 							}
 						}
+					}
 				}
 
 				_lastCheckedFooter
+			}
+		}
+	}
+
+	private func _toggle(_ app: InstalledApp) {
+		UIImpactFeedbackGenerator(style: .light).impactOccurred()
+		withAnimation(.spring(response: 0.4, dampingFraction: 0.8, blendDuration: 0)) {
+			if selectedIDs.contains(app.id) {
+				selectedIDs.remove(app.id)
+			} else {
+				selectedIDs.insert(app.id)
 			}
 		}
 	}
@@ -106,6 +148,10 @@ struct InstalledCellView: View {
 	var hasUpdate: Bool = false
 	/// Tapping the yellow pill opens the update comparison
 	var onUpdate: (() -> Void)? = nil
+	/// Edit mode: shows a selection circle instead of the badge
+	var isEditing: Bool = false
+	var isSelected: Bool = false
+	var onToggle: (() -> Void)? = nil
 
 	/// Second line: repo and upload date of the installed build
 	private var _originLine: String {
@@ -121,6 +167,17 @@ struct InstalledCellView: View {
 	// MARK: Body
 	var body: some View {
 		HStack(spacing: 9) {
+			if isEditing {
+				Button {
+					onToggle?()
+				} label: {
+					Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+						.foregroundColor(isSelected ? .accentColor : .secondary)
+						.font(.title2)
+				}
+				.buttonStyle(.borderless)
+			}
+
 			_icon
 
 			VStack(alignment: .leading, spacing: 2) {
@@ -138,8 +195,11 @@ struct InstalledCellView: View {
 			}
 			.frame(maxWidth: .infinity, alignment: .leading)
 
-			_badge
+			if !isEditing {
+				_badge
+			}
 		}
+		.scaleEffect(isSelected ? 0.98 : 1.0)
 		.contentShape(Rectangle())
 	}
 

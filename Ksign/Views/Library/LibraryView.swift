@@ -19,6 +19,7 @@ struct LibraryView: View {
 	@State private var _selectedAppDylibsPresenting: AnyApp?
 	@State private var _selectedInstalledApp: InstalledApp?
 	@State private var _compareInstalledApp: InstalledApp?
+	@State private var _isInstalledSortPresenting = false
 	@State private var _isBulkSigningPresenting = false
     @State private var _isBulkInstallingPresenting = false
 	@State private var _isImportingPresenting = false
@@ -95,7 +96,7 @@ struct LibraryView: View {
 							}
 						}
 					} else if _selectedTab == 2 {
-						InstalledSectionView(searchText: _searchText, selectedApp: $_selectedInstalledApp, compareApp: $_compareInstalledApp)
+						InstalledSectionView(searchText: _searchText, selectedApp: $_selectedInstalledApp, compareApp: $_compareInstalledApp, selectedIDs: $_selectedApps)
 					} else {
 						NBSection(
 							.localized("Signed Apps"),
@@ -139,17 +140,23 @@ struct LibraryView: View {
                 }
             }
 			.toolbar {
-				if _selectedTab != 2 {
-					ToolbarItem(placement: .topBarLeading) {
-						EditButton()
-					}
+				ToolbarItem(placement: .topBarLeading) {
+					EditButton()
 				}
-				if _selectedTab == 2 {
+				if _selectedTab == 2 && !_isEditMode.isEditing {
 					ToolbarItem(placement: .topBarTrailing) {
 						UpdateCheckButton()
 					}
+					ToolbarItem(placement: .topBarTrailing) {
+						Button {
+							_isInstalledSortPresenting = true
+						} label: {
+							Image(systemName: "arrow.up.arrow.down")
+						}
+						.accessibilityLabel(Text(.localized("Sort")))
+					}
 				}
-                if _isEditMode.isEditing && _selectedTab != 2 {
+                if _isEditMode.isEditing {
 					ToolbarItemGroup(placement: .topBarTrailing) {
                         if _selectedTab == 0 {
                             Button {
@@ -158,7 +165,7 @@ struct LibraryView: View {
                                 NBButton(.localized("Sign"), systemImage: "signature", style: .icon)
                             }
                             .disabled(_selectedApps.isEmpty)
-                        } else {
+                        } else if _selectedTab == 1 {
                             Button {
                                 _isBulkInstallingPresenting = true
                             } label: {
@@ -190,6 +197,11 @@ struct LibraryView: View {
 			.sheet(item: $_selectedInstalledApp) { app in
 				InstalledDetailView(app: app, onCompare: { _compareInstalledApp = app })
 					.presentationDetents([.medium, .large])
+					.presentationDragIndicator(.visible)
+			}
+			.sheet(isPresented: $_isInstalledSortPresenting) {
+				InstalledSortSheet()
+					.presentationDetents([.medium])
 					.presentationDragIndicator(.visible)
 			}
 			.sheet(item: $_compareInstalledApp) { app in
@@ -268,8 +280,8 @@ struct LibraryView: View {
 				}
 			}
         }
-        .onChange(of: _selectedTab) { tab in
-            if tab == 2 { _isEditMode = .inactive }
+        .onChange(of: _selectedTab) { _ in
+            _selectedApps.removeAll()
         }
         .onChange(of: _isEditMode) { state in
             if !state.isEditing {
@@ -319,6 +331,18 @@ extension LibraryView {
 extension LibraryView {
 	private func _bulkDeleteSelectedApps() {
 		let appsToDelete = _selectedApps
+
+		if _selectedTab == 2 {
+			withAnimation(.easeInOut(duration: 0.5)) {
+				for id in appsToDelete {
+					InstalledStore.shared.remove(id)
+				}
+			}
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+				_selectedApps.removeAll()
+			}
+			return
+		}
 		
 		withAnimation(.easeInOut(duration: 0.5)) {
 			for appUUID in appsToDelete {
