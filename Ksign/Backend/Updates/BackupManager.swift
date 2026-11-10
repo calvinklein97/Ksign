@@ -44,6 +44,7 @@ enum BackupManager {
 	/// Settings that are carried over. Everything else stays at its default.
 	private static let settingsKeys: [String] = [
 		"Feather.accentColor",
+		"Feather.customAccentColor",
 		"Feather.compressionLevel",
 		"Feather.extractionLibrary",
 		"Feather.installationMethod",

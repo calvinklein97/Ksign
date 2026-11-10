@@ -86,6 +86,22 @@ struct AppearanceView: View {
 				}
 				.pickerStyle(.inline)
 				.labelsHidden()
+
+				HStack {
+					ColorPicker(
+						.localized("Custom Color"),
+						selection: Binding(
+							get: { accentColorManager.customColor },
+							set: { accentColorManager.setCustomColor($0) }
+						),
+						supportsOpacity: false
+					)
+					if _selectedAccentColor == AccentColorManager.customIndex {
+						Image(systemName: "checkmark")
+							.foregroundColor(.accentColor)
+							.font(.headline)
+					}
+				}
 			}
 		}
         .onChange(of: _userIntefacerStyle) { value in
