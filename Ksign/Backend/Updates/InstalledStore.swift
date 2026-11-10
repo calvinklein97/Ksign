@@ -207,6 +207,27 @@ final class InstalledStore: ObservableObject {
 		}
 	}
 
+	/// Adds apps from a backup. An existing record is only replaced by a newer installation.
+	/// Returns how many records were added or replaced.
+	func mergeImported(_ imported: [InstalledApp]) -> Int {
+		var changed = 0
+		mutate {
+			for app in imported {
+				if let index = _storedApps.firstIndex(where: { $0.id == app.id }) {
+					if app.installDate > _storedApps[index].installDate {
+						_storedApps[index] = app
+						changed += 1
+					}
+				} else {
+					_storedApps.append(app)
+					changed += 1
+				}
+			}
+			_storedApps.sort { $0.installDate > $1.installDate }
+		}
+		return changed
+	}
+
 	func remove(_ id: String) {
 		mutate {
 			_storedApps.removeAll { $0.id == id }

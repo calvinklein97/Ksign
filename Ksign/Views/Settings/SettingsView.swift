@@ -76,6 +76,8 @@ struct SettingsView: View {
                     }
 				}
 				
+				BackupSection()
+
 				_directories()
                 
                 Section {
