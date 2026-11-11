@@ -13,6 +13,8 @@ import UIKit
 struct BrowserAddressField: UIViewRepresentable {
 	@Binding var text: String
 	@Binding var isEditing: Bool
+	/// Shown while the field is not being edited (e.g. just the host)
+	var idleText: String
 	var placeholder: String
 	var onSubmit: () -> Void
 
@@ -28,6 +30,7 @@ struct BrowserAddressField: UIViewRepresentable {
 		field.clearButtonMode = .whileEditing
 		field.font = UIFont.preferredFont(forTextStyle: .body)
 		field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+		field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 		field.addTarget(
 			context.coordinator,
 			action: #selector(Coordinator.textChanged(_:)),
@@ -39,8 +42,9 @@ struct BrowserAddressField: UIViewRepresentable {
 	func updateUIView(_ field: UITextField, context: Context) {
 		context.coordinator.parent = self
 
-		if field.text != text, !field.isFirstResponder {
-			field.text = text
+		if !field.isFirstResponder {
+			let shown = idleText.isEmpty ? text : idleText
+			if field.text != shown { field.text = shown }
 		}
 		field.placeholder = placeholder
 
@@ -49,6 +53,14 @@ struct BrowserAddressField: UIViewRepresentable {
 		} else if !isEditing, field.isFirstResponder {
 			field.resignFirstResponder()
 		}
+	}
+
+	/// Never wider than the space offered, however long the address is
+	func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextField, context: Context) -> CGSize? {
+		CGSize(
+			width: proposal.width ?? 200,
+			height: uiView.intrinsicContentSize.height
+		)
 	}
 
 	func makeCoordinator() -> Coordinator {
@@ -67,9 +79,10 @@ struct BrowserAddressField: UIViewRepresentable {
 		}
 
 		func textFieldDidBeginEditing(_ field: UITextField) {
+			// Show the full address and select all of it, so typing replaces it
+			field.text = parent.text
 			DispatchQueue.main.async {
 				self.parent.isEditing = true
-				// Select the whole address so typing replaces it
 				field.selectAll(nil)
 			}
 		}

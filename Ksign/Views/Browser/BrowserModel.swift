@@ -61,7 +61,6 @@ final class BrowserModel: NSObject, ObservableObject {
 		webView.navigationDelegate = self
 		webView.uiDelegate = self
 		webView.allowsBackForwardNavigationGestures = true
-		webView.scrollView.contentInsetAdjustmentBehavior = .never
 
 		_applyAdBlock(reload: false)
 
@@ -90,27 +89,6 @@ final class BrowserModel: NSObject, ObservableObject {
 		]
 	}
 
-	// MARK: Layout
-	/// The page is drawn across the whole screen; the insets keep its content
-	/// clear of the floating bars when it is not scrolled.
-	func applyInsets(top: CGFloat, bottom: CGFloat) {
-		let scrollView = webView.scrollView
-		let old = scrollView.contentInset
-		guard old.top != top || old.bottom != bottom else { return }
-
-		let insets = UIEdgeInsets(top: top, left: 0, bottom: bottom, right: 0)
-
-		// Page layout (fixed elements, app-like pages such as Telegram Web) stays clear of the bars
-		webView.setMinimumViewportInset(insets, maximumViewportInset: insets)
-
-		let wasAtTop = scrollView.contentOffset.y <= -old.top + 2
-		scrollView.contentInset = insets
-		scrollView.verticalScrollIndicatorInsets = insets
-		if wasAtTop {
-			scrollView.contentOffset = CGPoint(x: scrollView.contentOffset.x, y: -top)
-		}
-	}
-
 	private func _scrolled(_ scrollView: UIScrollView) {
 		let offset = scrollView.contentOffset.y
 		defer { _lastOffset = offset }
@@ -123,7 +101,7 @@ final class BrowserModel: NSObject, ObservableObject {
 		_scrollTravel += delta
 
 		var collapsed = isCollapsed
-		if offset <= -scrollView.contentInset.top + 8 {
+		if offset <= -scrollView.adjustedContentInset.top + 8 {
 			collapsed = false
 		} else if _scrollTravel > 28 {
 			collapsed = true
@@ -279,6 +257,12 @@ final class BrowserModel: NSObject, ObservableObject {
 
 // MARK: - WKNavigationDelegate
 extension BrowserModel: WKNavigationDelegate {
+	func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+		if let url = webView.url {
+			HistoryStore.shared.record(url: url, title: webView.title ?? "")
+		}
+	}
+
 	func webView(
 		_ webView: WKWebView,
 		decidePolicyFor navigationAction: WKNavigationAction,

@@ -31,29 +31,24 @@ extension View {
 // MARK: - BrowserWebView
 struct BrowserWebView: UIViewRepresentable {
 	let model: BrowserModel
-	var topInset: CGFloat
-	var bottomInset: CGFloat
 
 	func makeUIView(context: Context) -> WKWebView {
 		model.webView
 	}
 
-	func updateUIView(_ uiView: WKWebView, context: Context) {
-		model.applyInsets(top: topInset, bottom: bottomInset)
-	}
+	func updateUIView(_ uiView: WKWebView, context: Context) {}
 }
 
 // MARK: - BrowserView
 struct BrowserView: View {
 	@ObservedObject private var _model = BrowserModel.shared
+	@ObservedObject private var _history = HistoryStore.shared
+	@ObservedObject private var _bookmarks = BookmarkStore.shared
 
 	@State private var _input = ""
-	@State private var _isBookmarksPresenting = false
+	@State private var _isSheetPresenting = false
+	@State private var _sheetTab = 0
 	@State private var _isEditing = false
-
-	/// Height reserved for the floating bars
-	private let _topBarHeight: CGFloat = 62
-	private let _bottomBarHeight: CGFloat = 64
 
 	private var _isCompact: Bool {
 		_model.isCollapsed && !_isEditing && _model.url != nil
@@ -63,77 +58,144 @@ struct BrowserView: View {
 		(_model.url?.host ?? "").replacingOccurrences(of: "www.", with: "")
 	}
 
+	/// While the whole address is selected, the latest visits are offered
+	private var _suggestions: [BrowserSuggestion] {
+		let query = (_input == _model.url?.absoluteString) ? "" : _input
+		return _history.suggestions(for: query, bookmarks: _bookmarks.bookmarks)
+	}
+
 	// MARK: Body
 	var body: some View {
-		GeometryReader { proxy in
+		VStack(spacing: 8) {
+			GeometryReader { geometry in
+				_addressBar(width: geometry.size.width)
+			}
+			.frame(height: 52)
+
 			ZStack {
-				// Page across the whole screen
 				if _model.url == nil {
-					Color(uiColor: .systemBackground)
-						.ignoresSafeArea()
 					BrowserBookmarksList { bookmark in
 						_model.load(bookmark.url.absoluteString)
 					}
-					.padding(.top, _topBarHeight)
-					.padding(.bottom, _bottomBarHeight)
 				} else {
-					BrowserWebView(
-						model: _model,
-						topInset: proxy.safeAreaInsets.top + _topBarHeight,
-						bottomInset: proxy.safeAreaInsets.bottom + _bottomBarHeight
-					)
-					.ignoresSafeArea()
+					BrowserWebView(model: _model)
 				}
 
-				// Floating bars
-				VStack(spacing: 0) {
-					_addressBar(width: proxy.size.width)
-
-					Spacer(minLength: 0)
-
-					if let banner = _model.banner {
-						Text(banner)
-							.font(.subheadline)
-							.padding(.horizontal, 16)
-							.padding(.vertical, 10)
-							.browserGlass(in: Capsule())
-							.padding(.bottom, 8)
-							.transition(.move(edge: .bottom).combined(with: .opacity))
-					}
-
-					if !_isEditing {
-						_bottomBar
-					}
+				if _isEditing {
+					_suggestionList
 				}
-				.animation(.spring(response: 0.35, dampingFraction: 0.85), value: _model.banner)
+			}
+			.overlay(alignment: .bottom) {
+				if let banner = _model.banner {
+					Text(banner)
+						.font(.subheadline)
+						.padding(.horizontal, 16)
+						.padding(.vertical, 10)
+						.browserGlass(in: Capsule())
+						.padding(.bottom, 8)
+						.transition(.move(edge: .bottom).combined(with: .opacity))
+				}
+			}
+			.animation(.spring(response: 0.35, dampingFraction: 0.85), value: _model.banner)
+
+			if !_isEditing {
+				_bottomBar
 			}
 		}
+		.background(Color(uiColor: .systemBackground))
 		.onReceive(_model.$url) { url in
 			if !_isEditing {
 				_input = url?.absoluteString ?? ""
 			}
 		}
+		.onChange(of: _isEditing) { editing in
+			// Leaving the field without opening anything restores the current address
+			if !editing {
+				_input = _model.url?.absoluteString ?? ""
+			}
+		}
 		.onChange(of: _model.desktopMode) { _ in
 			_model.reload()
 		}
-		.sheet(isPresented: $_isBookmarksPresenting) {
-			NavigationStack {
-				BrowserBookmarksList { bookmark in
-					_isBookmarksPresenting = false
-					_model.load(bookmark.url.absoluteString)
-				}
-				.navigationTitle(.localized("Bookmarks"))
-				.navigationBarTitleDisplayMode(.inline)
-				.toolbar {
-					ToolbarItem(placement: .topBarTrailing) {
-						Button(.localized("Done")) {
-							_isBookmarksPresenting = false
-						}
+		.sheet(isPresented: $_isSheetPresenting) {
+			_bookmarksAndHistorySheet
+		}
+	}
+
+	// MARK: Suggestions
+	private var _suggestionList: some View {
+		List {
+			ForEach(_suggestions) { suggestion in
+				Button {
+					_isEditing = false
+					_model.load(suggestion.url.absoluteString)
+				} label: {
+					VStack(alignment: .leading, spacing: 2) {
+						Text(suggestion.title)
+							.foregroundStyle(.primary)
+							.lineLimit(1)
+						Text(suggestion.url.absoluteString)
+							.font(.caption)
+							.foregroundStyle(.secondary)
+							.lineLimit(1)
+							.truncationMode(.middle)
 					}
 				}
 			}
-			.presentationDetents([.medium, .large])
 		}
+		.listStyle(.plain)
+		.background(Color(uiColor: .systemBackground))
+		.overlay {
+			if _suggestions.isEmpty {
+				Text(.localized("No matches in your history."))
+					.font(.subheadline)
+					.foregroundStyle(.secondary)
+			}
+		}
+	}
+
+	// MARK: Bookmarks and history
+	private var _bookmarksAndHistorySheet: some View {
+		NavigationStack {
+			VStack(spacing: 0) {
+				Picker("", selection: $_sheetTab) {
+					Text(.localized("Bookmarks")).tag(0)
+					Text(.localized("History")).tag(1)
+				}
+				.pickerStyle(.segmented)
+				.padding(.horizontal, 16)
+				.padding(.vertical, 8)
+
+				if _sheetTab == 0 {
+					BrowserBookmarksList { bookmark in
+						_isSheetPresenting = false
+						_model.load(bookmark.url.absoluteString)
+					}
+				} else {
+					BrowserHistoryList { entry in
+						_isSheetPresenting = false
+						_model.load(entry.url.absoluteString)
+					}
+				}
+			}
+			.navigationTitle(_sheetTab == 0 ? .localized("Bookmarks") : .localized("History"))
+			.navigationBarTitleDisplayMode(.inline)
+			.toolbar {
+				ToolbarItem(placement: .topBarLeading) {
+					if _sheetTab == 1, !_history.entries.isEmpty {
+						Button(.localized("Clear"), role: .destructive) {
+							_history.clear()
+						}
+					}
+				}
+				ToolbarItem(placement: .topBarTrailing) {
+					Button(.localized("Done")) {
+						_isSheetPresenting = false
+					}
+				}
+			}
+		}
+		.presentationDetents([.medium, .large])
 	}
 
 	// MARK: Address bar
@@ -149,6 +211,7 @@ struct BrowserView: View {
 				BrowserAddressField(
 					text: $_input,
 					isEditing: $_isEditing,
+					idleText: _host,
 					placeholder: .localized("Search or enter website"),
 					onSubmit: { _model.load(_input) }
 				)
@@ -186,8 +249,7 @@ struct BrowserView: View {
 					.onTapGesture { _model.expandBar() }
 			}
 		}
-		.padding(.top, 6)
-		.frame(maxWidth: .infinity)
+		.frame(maxWidth: .infinity, maxHeight: .infinity)
 		.animation(.spring(response: 0.4, dampingFraction: 0.88), value: compact)
 	}
 
@@ -210,7 +272,7 @@ struct BrowserView: View {
 
 			Spacer()
 
-			Button { _isBookmarksPresenting = true } label: { _icon("book") }
+			Button { _isSheetPresenting = true } label: { _icon("book") }
 
 			Spacer()
 
