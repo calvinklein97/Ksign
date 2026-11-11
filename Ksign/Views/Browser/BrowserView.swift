@@ -14,9 +14,13 @@ import NimbleExtensions
 extension View {
 	/// Liquid Glass on iOS 26, a blurred material on older versions
 	@ViewBuilder
-	func browserGlass<S: Shape>(in shape: S) -> some View {
+	func browserGlass<S: Shape>(in shape: S, interactive: Bool = false) -> some View {
 		if #available(iOS 26.0, *) {
-			self.glassEffect(.regular.interactive(), in: shape)
+			if interactive {
+				self.glassEffect(.regular.interactive(), in: shape)
+			} else {
+				self.glassEffect(.regular, in: shape)
+			}
 		} else {
 			self.background(.ultraThinMaterial, in: shape)
 				.overlay(shape.stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
@@ -45,7 +49,7 @@ struct BrowserView: View {
 
 	@State private var _input = ""
 	@State private var _isBookmarksPresenting = false
-	@FocusState private var _isEditing: Bool
+	@State private var _isEditing = false
 
 	/// Height reserved for the floating bars
 	private let _topBarHeight: CGFloat = 62
@@ -83,7 +87,7 @@ struct BrowserView: View {
 
 				// Floating bars
 				VStack(spacing: 0) {
-					_addressBar
+					_addressBar(width: proxy.size.width)
 
 					Spacer(minLength: 0)
 
@@ -133,90 +137,80 @@ struct BrowserView: View {
 	}
 
 	// MARK: Address bar
-	@ViewBuilder
-	private var _addressBar: some View {
-		Group {
-			if _isCompact {
-				Button {
-					_model.expandBar()
-				} label: {
-					Text(_host)
-						.font(.footnote.weight(.medium))
-						.foregroundStyle(.primary)
-						.lineLimit(1)
-						.padding(.horizontal, 16)
-						.padding(.vertical, 7)
-				}
-				.buttonStyle(.plain)
-				.browserGlass(in: Capsule())
-				.padding(.top, 6)
-				.transition(.scale(scale: 0.9).combined(with: .opacity))
-			} else {
-				HStack(spacing: 8) {
-					Image(systemName: "magnifyingglass")
-						.foregroundStyle(.secondary)
+	/// One capsule that changes size, so the shrinking is a smooth animation
+	private func _addressBar(width: CGFloat) -> some View {
+		let compact = _isCompact
 
-					TextField(.localized("Search or enter website"), text: $_input)
-						.focused($_isEditing)
-						.keyboardType(.webSearch)
-						.textInputAutocapitalization(.never)
-						.autocorrectionDisabled()
-						.submitLabel(.go)
-						.onSubmit {
-							_isEditing = false
-							_model.load(_input)
-						}
+		return ZStack {
+			HStack(spacing: 8) {
+				Image(systemName: "magnifyingglass")
+					.foregroundStyle(.secondary)
 
-					if _isEditing, !_input.isEmpty {
-						Button {
-							_input = ""
-						} label: {
-							Image(systemName: "xmark.circle.fill")
-								.foregroundStyle(.secondary)
-						}
-						.buttonStyle(.borderless)
-					} else if _model.url != nil {
-						Button {
-							if _model.isLoading { _model.stop() } else { _model.reload() }
-						} label: {
-							Image(systemName: _model.isLoading ? "xmark" : "arrow.clockwise")
-								.foregroundStyle(.secondary)
-						}
-						.buttonStyle(.borderless)
+				BrowserAddressField(
+					text: $_input,
+					isEditing: $_isEditing,
+					placeholder: .localized("Search or enter website"),
+					onSubmit: { _model.load(_input) }
+				)
+
+				if !_isEditing, _model.url != nil {
+					Button {
+						if _model.isLoading { _model.stop() } else { _model.reload() }
+					} label: {
+						Image(systemName: _model.isLoading ? "xmark" : "arrow.clockwise")
+							.foregroundStyle(.secondary)
+							.frame(width: 32, height: 32)
+							.contentShape(Rectangle())
 					}
+					.buttonStyle(.borderless)
 				}
-				.padding(.horizontal, 16)
-				.padding(.vertical, 12)
-				.browserGlass(in: Capsule())
-				.padding(.horizontal, 16)
-				.padding(.top, 6)
-				.transition(.scale(scale: 0.95).combined(with: .opacity))
+			}
+			.padding(.horizontal, 16)
+			.opacity(compact ? 0 : 1)
+			.allowsHitTesting(!compact)
+
+			Text(_host)
+				.font(.footnote.weight(.medium))
+				.foregroundStyle(.primary)
+				.lineLimit(1)
+				.padding(.horizontal, 12)
+				.opacity(compact ? 1 : 0)
+		}
+		.frame(width: compact ? 200 : max(width - 32, 200), height: compact ? 34 : 46)
+		.browserGlass(in: Capsule())
+		.overlay {
+			// Tapping the small bar brings the full one back
+			if compact {
+				Color.clear
+					.contentShape(Capsule())
+					.onTapGesture { _model.expandBar() }
 			}
 		}
+		.padding(.top, 6)
 		.frame(maxWidth: .infinity)
-		.animation(.spring(response: 0.35, dampingFraction: 0.85), value: _isCompact)
+		.animation(.spring(response: 0.4, dampingFraction: 0.88), value: compact)
 	}
 
 	// MARK: Bottom bar
+	private func _icon(_ name: String) -> some View {
+		Image(systemName: name)
+			.frame(width: 44, height: 44)
+			.contentShape(Rectangle())
+	}
+
 	private var _bottomBar: some View {
 		HStack {
-			Button { _model.goBack() } label: {
-				Image(systemName: "chevron.left")
-			}
-			.disabled(!_model.canGoBack)
+			Button { _model.goBack() } label: { _icon("chevron.left") }
+				.disabled(!_model.canGoBack)
 
 			Spacer()
 
-			Button { _model.goForward() } label: {
-				Image(systemName: "chevron.right")
-			}
-			.disabled(!_model.canGoForward)
+			Button { _model.goForward() } label: { _icon("chevron.right") }
+				.disabled(!_model.canGoForward)
 
 			Spacer()
 
-			Button { _isBookmarksPresenting = true } label: {
-				Image(systemName: "book")
-			}
+			Button { _isBookmarksPresenting = true } label: { _icon("book") }
 
 			Spacer()
 
@@ -249,6 +243,12 @@ struct BrowserView: View {
 				}
 				.disabled(_model.url == nil)
 
+				Divider()
+
+				Toggle(isOn: $_model.adBlockEnabled) {
+					Label(.localized("Block Ads"), systemImage: "shield.lefthalf.filled")
+				}
+
 				Toggle(isOn: $_model.desktopMode) {
 					Label(.localized("Request Desktop Site"), systemImage: "desktopcomputer")
 				}
@@ -261,13 +261,13 @@ struct BrowserView: View {
 					Label(.localized("Clear Browsing Data"), systemImage: "trash")
 				}
 			} label: {
-				Image(systemName: "ellipsis")
+				_icon("ellipsis")
 			}
 		}
 		.font(.title3)
 		.foregroundStyle(.primary)
-		.padding(.horizontal, 28)
-		.padding(.vertical, 14)
+		.padding(.horizontal, 20)
+		.padding(.vertical, 4)
 		.browserGlass(in: Capsule())
 		.padding(.horizontal, 24)
 		.padding(.bottom, 8)

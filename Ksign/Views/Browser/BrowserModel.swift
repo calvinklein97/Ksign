@@ -29,10 +29,20 @@ final class BrowserModel: NSObject, ObservableObject {
 	/// Short message at the bottom, e.g. "Download started"
 	@Published private(set) var banner: String?
 	@Published var desktopMode = false
+	/// Blocks well-known ad and tracking servers (on by default)
+	@Published var adBlockEnabled: Bool = (UserDefaults.standard.object(forKey: "ksign.browser.adblock") as? Bool) ?? true {
+		didSet {
+			UserDefaults.standard.set(adBlockEnabled, forKey: "ksign.browser.adblock")
+			_applyAdBlock(reload: true)
+		}
+	}
 
 	private var _observers: [NSKeyValueObservation] = []
 	private var _bannerWork: DispatchWorkItem?
 	private var _lastOffset: CGFloat = 0
+	/// Scrolled distance in one direction, so tiny movements do not toggle the bar
+	private var _scrollTravel: CGFloat = 0
+	private var _ruleList: WKContentRuleList?
 
 	/// Downloads that WebKit handles itself (for example from blob: addresses)
 	private struct WebKitDownloadInfo {
@@ -52,6 +62,8 @@ final class BrowserModel: NSObject, ObservableObject {
 		webView.uiDelegate = self
 		webView.allowsBackForwardNavigationGestures = true
 		webView.scrollView.contentInsetAdjustmentBehavior = .never
+
+		_applyAdBlock(reload: false)
 
 		_observers = [
 			webView.observe(\.url) { [weak self] view, _ in
@@ -86,9 +98,14 @@ final class BrowserModel: NSObject, ObservableObject {
 		let old = scrollView.contentInset
 		guard old.top != top || old.bottom != bottom else { return }
 
+		let insets = UIEdgeInsets(top: top, left: 0, bottom: bottom, right: 0)
+
+		// Page layout (fixed elements, app-like pages such as Telegram Web) stays clear of the bars
+		webView.setMinimumViewportInset(insets, maximumViewportInset: insets)
+
 		let wasAtTop = scrollView.contentOffset.y <= -old.top + 2
-		scrollView.contentInset = UIEdgeInsets(top: top, left: 0, bottom: bottom, right: 0)
-		scrollView.verticalScrollIndicatorInsets = scrollView.contentInset
+		scrollView.contentInset = insets
+		scrollView.verticalScrollIndicatorInsets = insets
 		if wasAtTop {
 			scrollView.contentOffset = CGPoint(x: scrollView.contentOffset.x, y: -top)
 		}
@@ -101,12 +118,16 @@ final class BrowserModel: NSObject, ObservableObject {
 		guard scrollView.isTracking || scrollView.isDecelerating else { return }
 
 		let delta = offset - _lastOffset
+		// A change of direction starts a new count
+		if (delta > 0) != (_scrollTravel > 0) { _scrollTravel = 0 }
+		_scrollTravel += delta
+
 		var collapsed = isCollapsed
 		if offset <= -scrollView.contentInset.top + 8 {
 			collapsed = false
-		} else if delta > 4 {
+		} else if _scrollTravel > 28 {
 			collapsed = true
-		} else if delta < -4 {
+		} else if _scrollTravel < -28 {
 			collapsed = false
 		}
 
@@ -166,6 +187,65 @@ final class BrowserModel: NSObject, ObservableObject {
 			let work = DispatchWorkItem { [weak self] in self?.banner = nil }
 			self._bannerWork = work
 			DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: work)
+		}
+	}
+
+	// MARK: Ad blocker
+	private static let _adBlockDomains = [
+		"doubleclick.net", "googlesyndication.com", "googleadservices.com", "adservice.google.com",
+		"adnxs.com", "taboola.com", "outbrain.com", "criteo.com", "criteo.net", "pubmatic.com",
+		"rubiconproject.com", "openx.net", "amazon-adsystem.com", "moatads.com", "adsrvr.org",
+		"advertising.com", "casalemedia.com", "smartadserver.com", "adform.net", "teads.tv",
+		"zedo.com", "popads.net", "popcash.net", "propellerads.com", "exoclick.com",
+		"juicyads.com", "trafficjunky.net", "mgid.com", "revcontent.com", "yieldmo.com",
+		"33across.com", "sharethrough.com", "bidswitch.net", "contextweb.com", "lijit.com",
+		"scorecardresearch.com", "quantserve.com"
+	]
+
+	private static let _adBlockRules: String = {
+		var rules: [[String: Any]] = _adBlockDomains.map { domain -> [String: Any] in
+			[
+				"trigger": [
+					"url-filter": domain.replacingOccurrences(of: ".", with: "\\."),
+					"load-type": ["third-party"]
+				],
+				"action": ["type": "block"]
+			]
+		}
+		// Empty ad containers disappear too
+		rules.append([
+			"trigger": ["url-filter": ".*"],
+			"action": [
+				"type": "css-display-none",
+				"selector": ".adsbygoogle, ins.adsbygoogle, [id^='google_ads_iframe'], [id^='div-gpt-ad'], .ad-slot, .ad-container, .advertisement, .banner-ad, [data-ad-slot]"
+			]
+		])
+		let data = (try? JSONSerialization.data(withJSONObject: rules)) ?? Data("[]".utf8)
+		return String(data: data, encoding: .utf8) ?? "[]"
+	}()
+
+	private func _applyAdBlock(reload: Bool) {
+		let controller = webView.configuration.userContentController
+		if let list = _ruleList {
+			controller.remove(list)
+			_ruleList = nil
+		}
+
+		guard adBlockEnabled else {
+			if reload { webView.reload() }
+			return
+		}
+
+		WKContentRuleListStore.default().compileContentRuleList(
+			forIdentifier: "ksign.adblock.v1",
+			encodedContentRuleList: Self._adBlockRules
+		) { [weak self] list, _ in
+			DispatchQueue.main.async {
+				guard let self, self.adBlockEnabled, let list else { return }
+				self.webView.configuration.userContentController.add(list)
+				self._ruleList = list
+				if reload { self.webView.reload() }
+			}
 		}
 	}
 
