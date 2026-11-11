@@ -56,6 +56,7 @@ enum BackupManager {
 		"Feather.useShareSheetForArchiving",
 		"Feather.userInterfaceStyle",
 		"signing_options",
+		BookmarkStore.defaultsKey,
 		InstalledSortStorage.keyName,
 		InstalledSortStorage.ascendingName
 	]
@@ -173,6 +174,7 @@ enum BackupManager {
 				OptionsManager.shared.options = options
 				OptionsManager.shared.saveOptions()
 			}
+			BookmarkStore.shared.reload()
 			settingsRestored = true
 		}
 
