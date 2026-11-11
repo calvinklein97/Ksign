@@ -3,19 +3,40 @@
 //  Ksign
 //
 //  Part of the in-app browser module.
-//  A small browser tab. IPA links are downloaded into the Library.
+//  Full-screen browser with floating glass bars. Downloads go to the Library.
 //
 
 import SwiftUI
 import WebKit
 import NimbleExtensions
 
+// MARK: - Glass
+extension View {
+	/// Liquid Glass on iOS 26, a blurred material on older versions
+	@ViewBuilder
+	func browserGlass<S: Shape>(in shape: S) -> some View {
+		if #available(iOS 26.0, *) {
+			self.glassEffect(.regular.interactive(), in: shape)
+		} else {
+			self.background(.ultraThinMaterial, in: shape)
+				.overlay(shape.stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
+		}
+	}
+}
+
 // MARK: - BrowserWebView
 struct BrowserWebView: UIViewRepresentable {
-	let webView: WKWebView
+	let model: BrowserModel
+	var topInset: CGFloat
+	var bottomInset: CGFloat
 
-	func makeUIView(context: Context) -> WKWebView { webView }
-	func updateUIView(_ uiView: WKWebView, context: Context) {}
+	func makeUIView(context: Context) -> WKWebView {
+		model.webView
+	}
+
+	func updateUIView(_ uiView: WKWebView, context: Context) {
+		model.applyInsets(top: topInset, bottom: bottomInset)
+	}
 }
 
 // MARK: - BrowserView
@@ -26,40 +47,62 @@ struct BrowserView: View {
 	@State private var _isBookmarksPresenting = false
 	@FocusState private var _isEditing: Bool
 
+	/// Height reserved for the floating bars
+	private let _topBarHeight: CGFloat = 62
+	private let _bottomBarHeight: CGFloat = 64
+
+	private var _isCompact: Bool {
+		_model.isCollapsed && !_isEditing && _model.url != nil
+	}
+
+	private var _host: String {
+		(_model.url?.host ?? "").replacingOccurrences(of: "www.", with: "")
+	}
+
 	// MARK: Body
 	var body: some View {
-		VStack(spacing: 0) {
-			_addressBar
-
-			ProgressView(value: _model.progress)
-				.progressViewStyle(.linear)
-				.opacity(_model.isLoading ? 1 : 0)
-
+		GeometryReader { proxy in
 			ZStack {
+				// Page across the whole screen
 				if _model.url == nil {
+					Color(uiColor: .systemBackground)
+						.ignoresSafeArea()
 					BrowserBookmarksList { bookmark in
 						_model.load(bookmark.url.absoluteString)
 					}
+					.padding(.top, _topBarHeight)
+					.padding(.bottom, _bottomBarHeight)
 				} else {
-					BrowserWebView(webView: _model.webView)
+					BrowserWebView(
+						model: _model,
+						topInset: proxy.safeAreaInsets.top + _topBarHeight,
+						bottomInset: proxy.safeAreaInsets.bottom + _bottomBarHeight
+					)
+					.ignoresSafeArea()
 				}
-			}
-			.overlay(alignment: .bottom) {
-				if let banner = _model.banner {
-					Text(banner)
-						.font(.subheadline)
-						.padding(.horizontal, 16)
-						.padding(.vertical, 10)
-						.background(.regularMaterial)
-						.clipShape(Capsule())
-						.padding(.bottom, 12)
-						.transition(.move(edge: .bottom).combined(with: .opacity))
-				}
-			}
-			.animation(.easeInOut, value: _model.banner)
 
-			Divider()
-			_bottomBar
+				// Floating bars
+				VStack(spacing: 0) {
+					_addressBar
+
+					Spacer(minLength: 0)
+
+					if let banner = _model.banner {
+						Text(banner)
+							.font(.subheadline)
+							.padding(.horizontal, 16)
+							.padding(.vertical, 10)
+							.browserGlass(in: Capsule())
+							.padding(.bottom, 8)
+							.transition(.move(edge: .bottom).combined(with: .opacity))
+					}
+
+					if !_isEditing {
+						_bottomBar
+					}
+				}
+				.animation(.spring(response: 0.35, dampingFraction: 0.85), value: _model.banner)
+			}
 		}
 		.onReceive(_model.$url) { url in
 			if !_isEditing {
@@ -90,38 +133,68 @@ struct BrowserView: View {
 	}
 
 	// MARK: Address bar
+	@ViewBuilder
 	private var _addressBar: some View {
-		HStack(spacing: 8) {
-			Image(systemName: "magnifyingglass")
-				.foregroundStyle(.secondary)
-
-			TextField(.localized("Search or enter website"), text: $_input)
-				.focused($_isEditing)
-				.keyboardType(.webSearch)
-				.textInputAutocapitalization(.never)
-				.autocorrectionDisabled()
-				.submitLabel(.go)
-				.onSubmit {
-					_isEditing = false
-					_model.load(_input)
-				}
-
-			if _isEditing, !_input.isEmpty {
+		Group {
+			if _isCompact {
 				Button {
-					_input = ""
+					_model.expandBar()
 				} label: {
-					Image(systemName: "xmark.circle.fill")
-						.foregroundStyle(.secondary)
+					Text(_host)
+						.font(.footnote.weight(.medium))
+						.foregroundStyle(.primary)
+						.lineLimit(1)
+						.padding(.horizontal, 16)
+						.padding(.vertical, 7)
 				}
-				.buttonStyle(.borderless)
+				.buttonStyle(.plain)
+				.browserGlass(in: Capsule())
+				.padding(.top, 6)
+				.transition(.scale(scale: 0.9).combined(with: .opacity))
+			} else {
+				HStack(spacing: 8) {
+					Image(systemName: "magnifyingglass")
+						.foregroundStyle(.secondary)
+
+					TextField(.localized("Search or enter website"), text: $_input)
+						.focused($_isEditing)
+						.keyboardType(.webSearch)
+						.textInputAutocapitalization(.never)
+						.autocorrectionDisabled()
+						.submitLabel(.go)
+						.onSubmit {
+							_isEditing = false
+							_model.load(_input)
+						}
+
+					if _isEditing, !_input.isEmpty {
+						Button {
+							_input = ""
+						} label: {
+							Image(systemName: "xmark.circle.fill")
+								.foregroundStyle(.secondary)
+						}
+						.buttonStyle(.borderless)
+					} else if _model.url != nil {
+						Button {
+							if _model.isLoading { _model.stop() } else { _model.reload() }
+						} label: {
+							Image(systemName: _model.isLoading ? "xmark" : "arrow.clockwise")
+								.foregroundStyle(.secondary)
+						}
+						.buttonStyle(.borderless)
+					}
+				}
+				.padding(.horizontal, 16)
+				.padding(.vertical, 12)
+				.browserGlass(in: Capsule())
+				.padding(.horizontal, 16)
+				.padding(.top, 6)
+				.transition(.scale(scale: 0.95).combined(with: .opacity))
 			}
 		}
-		.padding(.horizontal, 12)
-		.padding(.vertical, 10)
-		.background(Color(uiColor: .secondarySystemBackground))
-		.clipShape(Capsule())
-		.padding(.horizontal, 16)
-		.padding(.vertical, 8)
+		.frame(maxWidth: .infinity)
+		.animation(.spring(response: 0.35, dampingFraction: 0.85), value: _isCompact)
 	}
 
 	// MARK: Bottom bar
@@ -138,15 +211,6 @@ struct BrowserView: View {
 				Image(systemName: "chevron.right")
 			}
 			.disabled(!_model.canGoForward)
-
-			Spacer()
-
-			Button {
-				if _model.isLoading { _model.stop() } else { _model.reload() }
-			} label: {
-				Image(systemName: _model.isLoading ? "xmark" : "arrow.clockwise")
-			}
-			.disabled(_model.url == nil)
 
 			Spacer()
 
@@ -197,11 +261,15 @@ struct BrowserView: View {
 					Label(.localized("Clear Browsing Data"), systemImage: "trash")
 				}
 			} label: {
-				Image(systemName: "ellipsis.circle")
+				Image(systemName: "ellipsis")
 			}
 		}
 		.font(.title3)
+		.foregroundStyle(.primary)
+		.padding(.horizontal, 28)
+		.padding(.vertical, 14)
+		.browserGlass(in: Capsule())
 		.padding(.horizontal, 24)
-		.padding(.vertical, 10)
+		.padding(.bottom, 8)
 	}
 }

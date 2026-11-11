@@ -229,6 +229,11 @@ extension DownloadManager: URLSessionDownloadDelegate {
 			let destinationURL = downloadDir.appendingPathComponent(suggestedFileName)
 			try FileManager.default.removeFileIfNeeded(at: destinationURL)
 			try FileManager.default.moveItem(at: location, to: destinationURL)
+			// Browser downloads that are not IPAs are only stored as files
+			if download.id.hasPrefix(BrowserFileSaver.idPrefix), !BrowserFileSaver.isIPA(destinationURL) {
+				_saveAsPlainFile(destinationURL, download: download)
+				return
+			}
 			self.handlePachageFile(url: destinationURL, dl: download) { err in
 				if let error = err {
 					print("Error handling downloaded file: \(error.localizedDescription)")
@@ -236,6 +241,20 @@ extension DownloadManager: URLSessionDownloadDelegate {
 			}
 		} catch {
 			print("Error handling downloaded file: \(error.localizedDescription)")
+		}
+	}
+
+	private func _saveAsPlainFile(_ file: URL, download: Download) {
+		BrowserFileSaver.save(file)
+		DispatchQueue.main.async {
+			if let index = self.getDownloadIndex(by: download.id) {
+				self.downloads.remove(at: index)
+			}
+			self._updateBackgroundAudioState()
+			if #available(iOS 26.0, *) {
+				BackgroundTaskManager.shared.stopTask(for: download.id, success: true)
+			}
+			self._notifyDownloadCompleted(fileName: file.lastPathComponent)
 		}
 	}
     

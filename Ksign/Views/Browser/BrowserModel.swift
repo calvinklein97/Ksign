@@ -4,7 +4,8 @@
 //
 //  Part of the in-app browser module.
 //  Owns the WKWebView (Safari's WebKit engine), tracks its state and hands
-//  IPA downloads over to the DownloadManager so they show up in the Library.
+//  downloads over to the Library: IPAs are imported, other files end up in
+//  the "Downloads" folder of the app files.
 //
 
 import SwiftUI
@@ -23,12 +24,23 @@ final class BrowserModel: NSObject, ObservableObject {
 	@Published private(set) var canGoForward = false
 	@Published private(set) var isLoading = false
 	@Published private(set) var progress: Double = 0
+	/// True while the page is scrolled down: the address bar shrinks
+	@Published private(set) var isCollapsed = false
 	/// Short message at the bottom, e.g. "Download started"
 	@Published private(set) var banner: String?
 	@Published var desktopMode = false
 
 	private var _observers: [NSKeyValueObservation] = []
 	private var _bannerWork: DispatchWorkItem?
+	private var _lastOffset: CGFloat = 0
+
+	/// Downloads that WebKit handles itself (for example from blob: addresses)
+	private struct WebKitDownloadInfo {
+		var row: Download
+		var file: URL
+		var observation: NSKeyValueObservation?
+	}
+	private var _webKitDownloads: [ObjectIdentifier: WebKitDownloadInfo] = [:]
 
 	private override init() {
 		let configuration = WKWebViewConfiguration()
@@ -39,6 +51,7 @@ final class BrowserModel: NSObject, ObservableObject {
 		webView.navigationDelegate = self
 		webView.uiDelegate = self
 		webView.allowsBackForwardNavigationGestures = true
+		webView.scrollView.contentInsetAdjustmentBehavior = .never
 
 		_observers = [
 			webView.observe(\.url) { [weak self] view, _ in
@@ -58,8 +71,52 @@ final class BrowserModel: NSObject, ObservableObject {
 			},
 			webView.observe(\.estimatedProgress) { [weak self] view, _ in
 				DispatchQueue.main.async { self?.progress = view.estimatedProgress }
+			},
+			webView.scrollView.observe(\.contentOffset) { [weak self] scrollView, _ in
+				self?._scrolled(scrollView)
 			}
 		]
+	}
+
+	// MARK: Layout
+	/// The page is drawn across the whole screen; the insets keep its content
+	/// clear of the floating bars when it is not scrolled.
+	func applyInsets(top: CGFloat, bottom: CGFloat) {
+		let scrollView = webView.scrollView
+		let old = scrollView.contentInset
+		guard old.top != top || old.bottom != bottom else { return }
+
+		let wasAtTop = scrollView.contentOffset.y <= -old.top + 2
+		scrollView.contentInset = UIEdgeInsets(top: top, left: 0, bottom: bottom, right: 0)
+		scrollView.verticalScrollIndicatorInsets = scrollView.contentInset
+		if wasAtTop {
+			scrollView.contentOffset = CGPoint(x: scrollView.contentOffset.x, y: -top)
+		}
+	}
+
+	private func _scrolled(_ scrollView: UIScrollView) {
+		let offset = scrollView.contentOffset.y
+		defer { _lastOffset = offset }
+		// Only react to the user's own scrolling
+		guard scrollView.isTracking || scrollView.isDecelerating else { return }
+
+		let delta = offset - _lastOffset
+		var collapsed = isCollapsed
+		if offset <= -scrollView.contentInset.top + 8 {
+			collapsed = false
+		} else if delta > 4 {
+			collapsed = true
+		} else if delta < -4 {
+			collapsed = false
+		}
+
+		if collapsed != isCollapsed {
+			DispatchQueue.main.async { self.isCollapsed = collapsed }
+		}
+	}
+
+	func expandBar() {
+		isCollapsed = false
 	}
 
 	// MARK: Actions
@@ -112,9 +169,9 @@ final class BrowserModel: NSObject, ObservableObject {
 		}
 	}
 
-	// MARK: IPA download
-	private static func _isIPA(_ url: URL) -> Bool {
-		["ipa", "tipa"].contains(url.pathExtension.lowercased())
+	// MARK: Downloads
+	private static func _isWebAddress(_ url: URL) -> Bool {
+		["http", "https"].contains(url.scheme?.lowercased() ?? "")
 	}
 
 	private static func _isIPAName(_ name: String) -> Bool {
@@ -124,14 +181,14 @@ final class BrowserModel: NSObject, ObservableObject {
 
 	/// Starts the download through the app's download manager, so it shows up
 	/// under "Downloads in progress" in the Library like every other download.
-	private func _startIPADownload(_ url: URL) {
+	private func _startDownload(_ url: URL) {
 		// Hand over the browser's cookies so hosts that check a session keep working
 		webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
 			cookies.forEach { HTTPCookieStorage.shared.setCookie($0) }
 			DispatchQueue.main.async {
 				_ = DownloadManager.shared.startDownload(
 					from: url,
-					id: "FeatherManualDownload_\(UUID().uuidString)"
+					id: "\(BrowserFileSaver.idPrefix)\(UUID().uuidString)"
 				)
 				let name = url.lastPathComponent.removingPercentEncoding ?? url.lastPathComponent
 				self.showBanner("\(String.localized("Download started")): \(name)")
@@ -148,10 +205,22 @@ extension BrowserModel: WKNavigationDelegate {
 		preferences: WKWebpagePreferences,
 		decisionHandler: @escaping (WKNavigationActionPolicy, WKWebpagePreferences) -> Void
 	) {
-		if let url = navigationAction.request.url, Self._isIPA(url) {
-			decisionHandler(.cancel, preferences)
-			_startIPADownload(url)
-			return
+		if let url = navigationAction.request.url {
+			if BrowserFileSaver.isIPA(url), Self._isWebAddress(url) {
+				decisionHandler(.cancel, preferences)
+				_startDownload(url)
+				return
+			}
+			// Links with a download attribute, blob: addresses and similar
+			if navigationAction.shouldPerformDownload {
+				if Self._isWebAddress(url) {
+					decisionHandler(.cancel, preferences)
+					_startDownload(url)
+				} else {
+					decisionHandler(.download, preferences)
+				}
+				return
+			}
 		}
 		preferences.preferredContentMode = desktopMode ? .desktop : .mobile
 		decisionHandler(.allow, preferences)
@@ -167,23 +236,94 @@ extension BrowserModel: WKNavigationDelegate {
 			return
 		}
 
-		let suggested = navigationResponse.response.suggestedFilename ?? ""
-		if Self._isIPA(url) || Self._isIPAName(suggested) {
-			decisionHandler(.cancel)
-			_startIPADownload(url)
-			return
-		}
-
-		// Any other file would be a download; only IPAs are supported
 		let disposition = (navigationResponse.response as? HTTPURLResponse)?
 			.value(forHTTPHeaderField: "Content-Disposition")?.lowercased() ?? ""
-		if disposition.contains("attachment") || !navigationResponse.canShowMIMEType {
-			decisionHandler(.cancel)
-			showBanner(String.localized("Only IPA files can be downloaded."))
+		let suggested = navigationResponse.response.suggestedFilename ?? ""
+
+		let isFile = BrowserFileSaver.isIPA(url)
+			|| Self._isIPAName(suggested)
+			|| disposition.contains("attachment")
+			|| !navigationResponse.canShowMIMEType
+
+		guard isFile else {
+			decisionHandler(.allow)
 			return
 		}
 
-		decisionHandler(.allow)
+		if Self._isWebAddress(url) {
+			decisionHandler(.cancel)
+			_startDownload(url)
+		} else {
+			decisionHandler(.download)
+		}
+	}
+
+	func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+		download.delegate = self
+	}
+
+	func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+		download.delegate = self
+	}
+}
+
+// MARK: - WKDownloadDelegate
+extension BrowserModel: WKDownloadDelegate {
+	func download(
+		_ download: WKDownload,
+		decideDestinationUsing response: URLResponse,
+		suggestedFilename: String,
+		completionHandler: @escaping (URL?) -> Void
+	) {
+		let folder = FileManager.default.temporaryDirectory
+			.appendingPathComponent("BrowserDownloads", isDirectory: true)
+			.appendingPathComponent(UUID().uuidString, isDirectory: true)
+		try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+		let file = folder.appendingPathComponent(suggestedFilename)
+
+		// A row in "Downloads in progress" that follows WebKit's progress
+		let row = DownloadManager.shared.startArchive(
+			from: file,
+			id: "\(BrowserFileSaver.idPrefix)\(UUID().uuidString)"
+		)
+		let observation = download.progress.observe(\.fractionCompleted) { [weak self, weak download] progress, _ in
+			DispatchQueue.main.async {
+				row.progress = progress.fractionCompleted
+				row.unpackageProgress = progress.fractionCompleted
+				// The row was cancelled in the Library
+				if DownloadManager.shared.getDownload(by: row.id) == nil, let download {
+					download.cancel { _ in }
+					self?._webKitDownloads[ObjectIdentifier(download)] = nil
+				}
+			}
+		}
+		_webKitDownloads[ObjectIdentifier(download)] = WebKitDownloadInfo(
+			row: row,
+			file: file,
+			observation: observation
+		)
+		completionHandler(file)
+	}
+
+	func downloadDidFinish(_ download: WKDownload) {
+		guard let info = _webKitDownloads.removeValue(forKey: ObjectIdentifier(download)) else { return }
+
+		if BrowserFileSaver.isIPA(info.file) {
+			info.row.unpackageProgress = 0
+			DownloadManager.shared.handlePachageFile(url: info.file, dl: info.row) { _ in }
+		} else {
+			BrowserFileSaver.save(info.file)
+			DownloadManager.shared.cancelDownload(info.row)
+			showBanner(String.localized("Saved to the Downloads folder"))
+		}
+	}
+
+	func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+		if let info = _webKitDownloads.removeValue(forKey: ObjectIdentifier(download)) {
+			DownloadManager.shared.cancelDownload(info.row)
+			try? FileManager.default.removeItem(at: info.file)
+		}
+		showBanner(String.localized("Download failed"))
 	}
 }
 
