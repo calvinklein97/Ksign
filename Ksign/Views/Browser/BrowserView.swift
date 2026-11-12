@@ -3,7 +3,7 @@
 //  Ksign
 //
 //  Part of the in-app browser module.
-//  Full-screen browser with floating glass bars. Downloads go to the Library.
+//  Browser with floating glass bars; the page colour runs under them. Downloads go to the Library.
 //
 
 import SwiftUI
@@ -65,12 +65,18 @@ struct BrowserView: View {
 	}
 
 	// MARK: Body
+	private static let _cornerRadius: CGFloat = 28
+	private static let _bottomBarHeight: CGFloat = 62
+
 	var body: some View {
-		VStack(spacing: 8) {
-			GeometryReader { geometry in
-				_addressBar(width: geometry.size.width)
-			}
-			.frame(height: 52)
+		let compact = _isCompact
+		let topHeight: CGFloat = compact ? 42 : 56
+		let bottomHeight: CGFloat = (compact || _isEditing) ? 0 : Self._bottomBarHeight
+
+		ZStack {
+			// The page colour continues under the bars, the page itself stays in the safe area
+			Color(uiColor: _model.url == nil ? .systemBackground : (_model.pageColor ?? .systemBackground))
+				.ignoresSafeArea()
 
 			ZStack {
 				if _model.url == nil {
@@ -85,6 +91,23 @@ struct BrowserView: View {
 					_suggestionList
 				}
 			}
+			.clipShape(RoundedRectangle(cornerRadius: Self._cornerRadius, style: .continuous))
+			.padding(.top, topHeight)
+			.padding(.bottom, bottomHeight)
+
+			VStack(spacing: 0) {
+				GeometryReader { geometry in
+					_addressBar(width: geometry.size.width)
+				}
+				.frame(height: topHeight)
+
+				Spacer(minLength: 0)
+
+				_bottomBar
+					.offset(y: (compact || _isEditing) ? Self._bottomBarHeight + 20 : 0)
+					.opacity((compact || _isEditing) ? 0 : 1)
+					.allowsHitTesting(!(compact || _isEditing))
+			}
 			.overlay(alignment: .bottom) {
 				if let banner = _model.banner {
 					Text(banner)
@@ -92,17 +115,13 @@ struct BrowserView: View {
 						.padding(.horizontal, 16)
 						.padding(.vertical, 10)
 						.browserGlass(in: Capsule())
-						.padding(.bottom, 8)
+						.padding(.bottom, bottomHeight + 8)
 						.transition(.move(edge: .bottom).combined(with: .opacity))
 				}
 			}
-			.animation(.spring(response: 0.35, dampingFraction: 0.85), value: _model.banner)
-
-			if !_isEditing {
-				_bottomBar
-			}
 		}
-		.background(Color(uiColor: .systemBackground))
+		.animation(.spring(response: 0.4, dampingFraction: 0.88), value: compact)
+		.animation(.spring(response: 0.35, dampingFraction: 0.85), value: _model.banner)
 		.onReceive(_model.$url) { url in
 			if !_isEditing {
 				_input = url?.absoluteString ?? ""

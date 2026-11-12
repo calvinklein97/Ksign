@@ -26,6 +26,8 @@ final class BrowserModel: NSObject, ObservableObject {
 	@Published private(set) var progress: Double = 0
 	/// True while the page is scrolled down: the address bar shrinks
 	@Published private(set) var isCollapsed = false
+	/// Background colour of the current page, drawn behind the bars
+	@Published private(set) var pageColor: UIColor?
 	/// Short message at the bottom, e.g. "Download started"
 	@Published private(set) var banner: String?
 	@Published var desktopMode = false
@@ -42,6 +44,8 @@ final class BrowserModel: NSObject, ObservableObject {
 	private var _lastOffset: CGFloat = 0
 	/// Scrolled distance in one direction, so tiny movements do not toggle the bar
 	private var _scrollTravel: CGFloat = 0
+	/// Resizing the page moves the scroll offset; ignore that for a moment
+	private var _ignoreScrollUntil = Date.distantPast
 	private var _ruleList: WKContentRuleList?
 
 	/// Downloads that WebKit handles itself (for example from blob: addresses)
@@ -61,6 +65,7 @@ final class BrowserModel: NSObject, ObservableObject {
 		webView.navigationDelegate = self
 		webView.uiDelegate = self
 		webView.allowsBackForwardNavigationGestures = true
+		webView.scrollView.contentInsetAdjustmentBehavior = .never
 
 		_applyAdBlock(reload: false)
 
@@ -83,6 +88,9 @@ final class BrowserModel: NSObject, ObservableObject {
 			webView.observe(\.estimatedProgress) { [weak self] view, _ in
 				DispatchQueue.main.async { self?.progress = view.estimatedProgress }
 			},
+			webView.observe(\.underPageBackgroundColor) { [weak self] view, _ in
+				DispatchQueue.main.async { self?.pageColor = view.underPageBackgroundColor }
+			},
 			webView.scrollView.observe(\.contentOffset) { [weak self] scrollView, _ in
 				self?._scrolled(scrollView)
 			}
@@ -92,6 +100,10 @@ final class BrowserModel: NSObject, ObservableObject {
 	private func _scrolled(_ scrollView: UIScrollView) {
 		let offset = scrollView.contentOffset.y
 		defer { _lastOffset = offset }
+		guard Date() >= _ignoreScrollUntil else {
+			_scrollTravel = 0
+			return
+		}
 		// Only react to the user's own scrolling
 		guard scrollView.isTracking || scrollView.isDecelerating else { return }
 
@@ -110,6 +122,8 @@ final class BrowserModel: NSObject, ObservableObject {
 		}
 
 		if collapsed != isCollapsed {
+			_ignoreScrollUntil = Date().addingTimeInterval(0.6)
+			_scrollTravel = 0
 			DispatchQueue.main.async { self.isCollapsed = collapsed }
 		}
 	}
