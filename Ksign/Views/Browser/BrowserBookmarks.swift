@@ -69,24 +69,32 @@ struct BrowserBookmarksList: View {
 				Button {
 					onSelect(bookmark)
 				} label: {
-					VStack(alignment: .leading, spacing: 2) {
-						Text(bookmark.title)
-							.foregroundStyle(.primary)
-						Text(bookmark.url.absoluteString)
-							.font(.caption)
-							.foregroundStyle(.secondary)
-							.lineLimit(1)
-							.truncationMode(.middle)
+					HStack(spacing: 12) {
+						FaviconView(url: bookmark.url)
+						VStack(alignment: .leading, spacing: 2) {
+							Text(bookmark.title)
+								.foregroundStyle(.primary)
+								.lineLimit(1)
+							Text(bookmark.url.absoluteString)
+								.font(.caption)
+								.foregroundStyle(.secondary)
+								.lineLimit(1)
+								.truncationMode(.middle)
+						}
 					}
 				}
+				.buttonStyle(.plain)
+				.listRowBackground(Color.clear)
 			}
 			.onDelete { offsets in
 				_store.remove(at: offsets)
 			}
 		}
+		.listStyle(.plain)
+		.scrollContentBackground(.hidden)
 		.overlay {
 			if _store.bookmarks.isEmpty {
-				Text(.localized("Enter a web address or a search term. Add bookmarks from the menu."))
+				Text(.localized("No bookmarks yet. Add them from the menu."))
 					.font(.subheadline)
 					.foregroundStyle(.secondary)
 					.multilineTextAlignment(.center)

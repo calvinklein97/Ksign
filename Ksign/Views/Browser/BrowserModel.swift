@@ -26,6 +26,8 @@ final class BrowserModel: NSObject, ObservableObject {
 	@Published private(set) var progress: Double = 0
 	/// True while the page is scrolled down: the address bar shrinks
 	@Published private(set) var isCollapsed = false
+	/// True while the home page is shown instead of the loaded page
+	@Published private(set) var showHome = false
 	/// Background colour of the current page, drawn behind the bars
 	@Published private(set) var pageColor: UIColor?
 	/// Short message at the bottom, e.g. "Download started"
@@ -71,7 +73,10 @@ final class BrowserModel: NSObject, ObservableObject {
 
 		_observers = [
 			webView.observe(\.url) { [weak self] view, _ in
-				DispatchQueue.main.async { self?.url = view.url }
+				DispatchQueue.main.async {
+					self?.url = view.url
+					self?.showHome = false
+				}
 			},
 			webView.observe(\.title) { [weak self] view, _ in
 				DispatchQueue.main.async { self?.title = view.title ?? "" }
@@ -128,6 +133,11 @@ final class BrowserModel: NSObject, ObservableObject {
 		}
 	}
 
+	func goHome() {
+		isCollapsed = false
+		showHome = true
+	}
+
 	func expandBar() {
 		isCollapsed = false
 	}
@@ -136,6 +146,7 @@ final class BrowserModel: NSObject, ObservableObject {
 	func load(_ input: String) {
 		let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !text.isEmpty else { return }
+		showHome = false
 		webView.load(URLRequest(url: Self.url(from: text)))
 	}
 
@@ -272,8 +283,23 @@ final class BrowserModel: NSObject, ObservableObject {
 // MARK: - WKNavigationDelegate
 extension BrowserModel: WKNavigationDelegate {
 	func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-		if let url = webView.url {
-			HistoryStore.shared.record(url: url, title: webView.title ?? "")
+		guard let url = webView.url else { return }
+		let title = webView.title ?? ""
+		let script = """
+		(function () {
+			var d = document.querySelector('meta[name="description"],meta[property="og:description"]');
+			var links = [].slice.call(document.querySelectorAll('link[rel~="icon"],link[rel="apple-touch-icon"],link[rel="apple-touch-icon-precomposed"]'));
+			var apple = links.filter(function (l) { return /apple-touch/.test(l.rel); })[0];
+			var plain = links.filter(function (l) { return !/\\.svg(\\?|$)/i.test(l.href); })[0];
+			var icon = apple || plain || links[0];
+			return { d: d ? d.content : '', i: icon ? icon.href : '' };
+		})()
+		"""
+		webView.evaluateJavaScript(script) { result, _ in
+			let info = result as? [String: Any]
+			let summary = (info?["d"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+			let icon = (info?["i"] as? String).flatMap { $0.isEmpty ? nil : URL(string: $0) }
+			HistoryStore.shared.record(url: url, title: title, iconURL: icon, summary: summary)
 		}
 	}
 

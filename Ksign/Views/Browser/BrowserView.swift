@@ -50,12 +50,21 @@ struct BrowserView: View {
 	@State private var _sheetTab = 0
 	@State private var _isEditing = false
 
+	private var _isHome: Bool {
+		_model.url == nil || _model.showHome
+	}
+
 	private var _isCompact: Bool {
-		_model.isCollapsed && !_isEditing && _model.url != nil
+		_model.isCollapsed && !_isEditing && !_isHome
 	}
 
 	private var _host: String {
-		(_model.url?.host ?? "").replacingOccurrences(of: "www.", with: "")
+		_isHome ? "" : (_model.url?.host ?? "").replacingOccurrences(of: "www.", with: "")
+	}
+
+	/// What the address field shows when it is not being edited
+	private var _currentAddress: String {
+		_isHome ? "" : (_model.url?.absoluteString ?? "")
 	}
 
 	/// While the whole address is selected, the latest visits are offered
@@ -75,13 +84,13 @@ struct BrowserView: View {
 
 		ZStack {
 			// The page colour continues under the bars, the page itself stays in the safe area
-			Color(uiColor: _model.url == nil ? .systemBackground : (_model.pageColor ?? .systemBackground))
+			Color(uiColor: _isHome ? .systemBackground : (_model.pageColor ?? .systemBackground))
 				.ignoresSafeArea()
 
 			ZStack {
-				if _model.url == nil {
-					BrowserBookmarksList { bookmark in
-						_model.load(bookmark.url.absoluteString)
+				if _isHome {
+					BrowserHomeView { url in
+						_model.load(url.absoluteString)
 					}
 				} else {
 					BrowserWebView(model: _model)
@@ -124,13 +133,16 @@ struct BrowserView: View {
 		.animation(.spring(response: 0.35, dampingFraction: 0.85), value: _model.banner)
 		.onReceive(_model.$url) { url in
 			if !_isEditing {
-				_input = url?.absoluteString ?? ""
+				_input = _currentAddress
 			}
+		}
+		.onChange(of: _model.showHome) { _ in
+			if !_isEditing { _input = _currentAddress }
 		}
 		.onChange(of: _isEditing) { editing in
 			// Leaving the field without opening anything restores the current address
 			if !editing {
-				_input = _model.url?.absoluteString ?? ""
+				_input = _currentAddress
 			}
 		}
 		.onChange(of: _model.desktopMode) { _ in
@@ -149,17 +161,21 @@ struct BrowserView: View {
 					_isEditing = false
 					_model.load(suggestion.url.absoluteString)
 				} label: {
-					VStack(alignment: .leading, spacing: 2) {
-						Text(suggestion.title)
-							.foregroundStyle(.primary)
-							.lineLimit(1)
-						Text(suggestion.url.absoluteString)
-							.font(.caption)
-							.foregroundStyle(.secondary)
-							.lineLimit(1)
-							.truncationMode(.middle)
+					HStack(spacing: 12) {
+						FaviconView(url: suggestion.url, size: 28)
+						VStack(alignment: .leading, spacing: 2) {
+							Text(suggestion.title)
+								.foregroundStyle(.primary)
+								.lineLimit(1)
+							Text(suggestion.url.absoluteString)
+								.font(.caption)
+								.foregroundStyle(.secondary)
+								.lineLimit(1)
+								.truncationMode(.middle)
+						}
 					}
 				}
+				.buttonStyle(.plain)
 			}
 		}
 		.listStyle(.plain)
@@ -235,7 +251,7 @@ struct BrowserView: View {
 					onSubmit: { _model.load(_input) }
 				)
 
-				if !_isEditing, _model.url != nil {
+				if !_isEditing, !_isHome {
 					Button {
 						if _model.isLoading { _model.stop() } else { _model.reload() }
 					} label: {
@@ -244,7 +260,7 @@ struct BrowserView: View {
 							.frame(width: 32, height: 32)
 							.contentShape(Rectangle())
 					}
-					.buttonStyle(.borderless)
+					.buttonStyle(.plain)
 				}
 			}
 			.padding(.horizontal, 16)
@@ -291,6 +307,11 @@ struct BrowserView: View {
 
 			Spacer()
 
+			Button { _model.goHome() } label: { _icon("house") }
+				.disabled(_isHome)
+
+			Spacer()
+
 			Button { _isSheetPresenting = true } label: { _icon("book") }
 
 			Spacer()
@@ -304,7 +325,7 @@ struct BrowserView: View {
 				} label: {
 					Label(.localized("Add Bookmark"), systemImage: "star")
 				}
-				.disabled(_model.url == nil)
+				.disabled(_isHome)
 
 				Button {
 					if let url = _model.url {
@@ -313,7 +334,7 @@ struct BrowserView: View {
 				} label: {
 					Label(.localized("Share"), systemImage: "square.and.arrow.up")
 				}
-				.disabled(_model.url == nil)
+				.disabled(_isHome)
 
 				Button {
 					if let url = _model.url {
@@ -322,7 +343,7 @@ struct BrowserView: View {
 				} label: {
 					Label(.localized("Open in Safari"), systemImage: "safari")
 				}
-				.disabled(_model.url == nil)
+				.disabled(_isHome)
 
 				Divider()
 

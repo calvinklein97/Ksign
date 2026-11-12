@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import NukeUI
 
 // MARK: - HistoryEntry
 struct HistoryEntry: Codable, Identifiable, Equatable {
@@ -14,6 +15,9 @@ struct HistoryEntry: Codable, Identifiable, Equatable {
 	var title: String
 	var lastVisited: Date
 	var visitCount: Int
+	/// Favicon and short page description, read from the page itself
+	var iconURL: URL?
+	var summary: String?
 
 	var id: String { url.absoluteString }
 }
@@ -44,7 +48,7 @@ final class HistoryStore: ObservableObject {
 		}
 	}
 
-	func record(url: URL, title: String) {
+	func record(url: URL, title: String, iconURL: URL? = nil, summary: String? = nil) {
 		guard ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return }
 
 		if let index = entries.firstIndex(where: { $0.url == url }) {
@@ -52,6 +56,8 @@ final class HistoryStore: ObservableObject {
 			entry.lastVisited = Date()
 			entry.visitCount += 1
 			if !title.isEmpty { entry.title = title }
+			if let iconURL { entry.iconURL = iconURL }
+			if let summary, !summary.isEmpty { entry.summary = summary }
 			entries.insert(entry, at: 0)
 		} else {
 			entries.insert(
@@ -59,7 +65,9 @@ final class HistoryStore: ObservableObject {
 					url: url,
 					title: title.isEmpty ? (url.host ?? url.absoluteString) : title,
 					lastVisited: Date(),
-					visitCount: 1
+					visitCount: 1,
+					iconURL: iconURL,
+					summary: (summary?.isEmpty ?? true) ? nil : summary
 				),
 				at: 0
 			)
@@ -73,6 +81,40 @@ final class HistoryStore: ObservableObject {
 	func remove(at offsets: IndexSet) {
 		entries.remove(atOffsets: offsets)
 		_save()
+	}
+
+	// MARK: Sites
+	/// Latest visit of every host, newest first
+	func recentSites(limit: Int) -> [HistoryEntry] {
+		var seen = Set<String>()
+		var result: [HistoryEntry] = []
+		for entry in entries {
+			let host = entry.url.host ?? entry.url.absoluteString
+			guard seen.insert(host).inserted else { continue }
+			result.append(entry)
+			if result.count == limit { break }
+		}
+		return result
+	}
+
+	func removeSite(host: String) {
+		entries.removeAll { $0.url.host == host }
+		_save()
+	}
+
+	/// The icon saved for a page, or for any page of the same host
+	func favicon(for url: URL) -> URL? {
+		if let icon = entries.first(where: { $0.url == url })?.iconURL { return icon }
+		if let host = url.host {
+			if let icon = entries.first(where: { $0.url.host == host && $0.iconURL != nil })?.iconURL { return icon }
+			return URL(string: "\(url.scheme ?? "https")://\(host)/favicon.ico")
+		}
+		return nil
+	}
+
+	func summary(for entry: HistoryEntry) -> String? {
+		if let text = entry.summary { return text }
+		return entries.first(where: { $0.url.host == entry.url.host && $0.summary != nil })?.summary
 	}
 
 	func clear() {
@@ -152,6 +194,32 @@ final class HistoryStore: ObservableObject {
 	}
 }
 
+// MARK: - Favicon
+struct FaviconView: View {
+	let url: URL
+	var size: CGFloat = 32
+
+	@ObservedObject private var _history = HistoryStore.shared
+
+	var body: some View {
+		LazyImage(url: _history.favicon(for: url)) { state in
+			if let image = state.image {
+				image
+					.resizable()
+					.scaledToFit()
+					.padding(size * 0.12)
+			} else {
+				Text(String((url.host ?? "?").replacingOccurrences(of: "www.", with: "").prefix(1)).uppercased())
+					.font(.system(size: size * 0.5, weight: .semibold, design: .rounded))
+					.foregroundStyle(.secondary)
+			}
+		}
+		.frame(width: size, height: size)
+		.background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: size * 0.26, style: .continuous))
+		.clipShape(RoundedRectangle(cornerRadius: size * 0.26, style: .continuous))
+	}
+}
+
 // MARK: - BrowserHistoryList
 struct BrowserHistoryList: View {
 	@ObservedObject private var _store = HistoryStore.shared
@@ -164,25 +232,32 @@ struct BrowserHistoryList: View {
 				Button {
 					onSelect(entry)
 				} label: {
-					VStack(alignment: .leading, spacing: 2) {
-						Text(entry.title)
-							.foregroundStyle(.primary)
-							.lineLimit(1)
-						Text(entry.url.absoluteString)
-							.font(.caption)
-							.foregroundStyle(.secondary)
-							.lineLimit(1)
-							.truncationMode(.middle)
-						Text(entry.lastVisited.formatted(date: .abbreviated, time: .shortened))
-							.font(.caption2)
-							.foregroundStyle(.tertiary)
+					HStack(spacing: 12) {
+						FaviconView(url: entry.url)
+						VStack(alignment: .leading, spacing: 2) {
+							Text(entry.title)
+								.foregroundStyle(.primary)
+								.lineLimit(1)
+							Text(entry.url.absoluteString)
+								.font(.caption)
+								.foregroundStyle(.secondary)
+								.lineLimit(1)
+								.truncationMode(.middle)
+							Text(entry.lastVisited.formatted(date: .abbreviated, time: .shortened))
+								.font(.caption2)
+								.foregroundStyle(.tertiary)
+						}
 					}
 				}
+				.buttonStyle(.plain)
+				.listRowBackground(Color.clear)
 			}
 			.onDelete { offsets in
 				_store.remove(at: offsets)
 			}
 		}
+		.listStyle(.plain)
+		.scrollContentBackground(.hidden)
 		.overlay {
 			if _store.entries.isEmpty {
 				Text(.localized("No history yet."))
