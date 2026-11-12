@@ -292,6 +292,8 @@ struct LibraryView: View {
 				}
 			}
         }
+        .onAppear { InAppBanner.shared.isLibraryVisible = true }
+        .onDisappear { InAppBanner.shared.isLibraryVisible = false }
         .onChange(of: _selectedTab) { _ in
             _selectedApps.removeAll()
         }

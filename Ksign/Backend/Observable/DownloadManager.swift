@@ -194,6 +194,9 @@ extension DownloadManager: URLSessionDownloadDelegate {
 				}
 				if err == nil {
 					self._notifyDownloadCompleted(fileName: url.lastPathComponent)
+					InAppBanner.shared.show(.imported, title: .localized("Import completed"), detail: url.lastPathComponent)
+				} else {
+					InAppBanner.shared.show(.failure, title: .localized("Import failed"), detail: url.lastPathComponent)
 				}
 				completion(err)
 			}
@@ -255,6 +258,7 @@ extension DownloadManager: URLSessionDownloadDelegate {
 				BackgroundTaskManager.shared.stopTask(for: download.id, success: true)
 			}
 			self._notifyDownloadCompleted(fileName: file.lastPathComponent)
+			InAppBanner.shared.show(.download, title: .localized("Download completed"), detail: file.lastPathComponent)
 		}
 	}
     
