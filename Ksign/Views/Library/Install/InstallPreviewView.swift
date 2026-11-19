@@ -140,6 +140,8 @@ struct InstallPreviewView: View {
                         }
                     }
                     else if await _installationMethod == 1 {
+                        // Starts LocalDevVPN first when the tunnel is not up
+                        _ = await TunnelManager.shared.ensureUp()
                         let handler = await InstallationProxy(viewModel: viewModel)
                         try await handler.install(at: packageUrl, suspend: app.identifier == Bundle.main.bundleIdentifier!)
                     }

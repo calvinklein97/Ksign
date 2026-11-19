@@ -76,6 +76,10 @@
 			<string>UINewsstandBindingTypeMagazine</string>
 		</dict>
 	</dict>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>localdevvpn</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

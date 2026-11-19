@@ -14,6 +14,8 @@ struct TunnelView: View {
 	@State private var _isImportingPairingPresenting = false
 	
 	@State var doesHavePairingFile = false
+	@AppStorage(TunnelManager.autoStartKey) private var _autoStartVPN = true
+	@State private var _vpnDidntOpen = false
 	
 	// MARK: Body
     var body: some View {
@@ -52,6 +54,21 @@ struct TunnelView: View {
 							}
 						}
 					}
+				}
+			}
+			
+			Section {
+				Toggle(.localized("Start LocalDevVPN when needed"), isOn: $_autoStartVPN)
+				Button(.localized("Start LocalDevVPN now"), systemImage: "bolt.horizontal.circle") {
+					Task { _vpnDidntOpen = !(await TunnelManager.shared.start()) }
+				}
+			} header: {
+				Text(.localized("Tunnel"))
+			} footer: {
+				if _vpnDidntOpen {
+					Text(.localized("LocalDevVPN did not open. Make sure it is installed."))
+				} else {
+					Text(.localized("CaliSign opens LocalDevVPN briefly to connect the tunnel before an installation and returns afterwards."))
 				}
 			}
 			

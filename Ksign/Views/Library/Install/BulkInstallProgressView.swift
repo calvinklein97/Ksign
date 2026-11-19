@@ -109,6 +109,8 @@ struct BulkInstallProgressView: View {
                         }
                     }
                 } else if await _installationMethod == 1 {
+                    // Starts LocalDevVPN first when the tunnel is not up
+                    _ = await TunnelManager.shared.ensureUp()
                     let proxy = await InstallationProxy(viewModel: viewModel)
                     try await proxy.install(at: packageUrl, suspend: app.identifier == Bundle.main.bundleIdentifier!)
                 }
