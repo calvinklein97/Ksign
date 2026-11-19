@@ -20,6 +20,7 @@ struct InstallPreviewView: View {
 	// Methods
     @AppStorage("Feather.installationMethod") private var _installationMethod: Int = 0
 	@AppStorage("Feather.serverMethod") private var _serverMethod: Int = 1
+	@State private var _isWebviewPresenting = false
     @State private var progressTask: Task<Void, Never>?
 	
 	var app: AppInfoPresentable
@@ -43,13 +44,15 @@ struct InstallPreviewView: View {
 			_status()
 		}
 		.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+		.sheet(isPresented: $_isWebviewPresenting) {
+			SafariRepresentableView(url: installer.pageEndpoint).ignoresSafeArea()
+		}
 		.onReceive(viewModel.$status) { newStatus in
 			if case .ready = newStatus {
 				if _serverMethod == 0 {
 					UIApplication.shared.open(URL(string: installer.iTunesLink)!)
 				} else if _serverMethod == 1 {
-					// Straight to the system install prompt, without the Safari page in between
-					UIApplication.shared.open(URL(string: installer.iTunesLinkExternal)!)
+					_isWebviewPresenting = true
 				}
 			}
             
@@ -62,6 +65,10 @@ struct InstallPreviewView: View {
                 }
             }
 			
+			if case .sendingPayload = newStatus, _serverMethod == 1 {
+				_isWebviewPresenting = false
+			}
+            
             // record the installation for the Installed tab, as soon as the system has the package
             if case .installing = newStatus {
                 InstalledStore.shared.recordInstall(of: app)
